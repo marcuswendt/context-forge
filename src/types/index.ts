@@ -7,6 +7,7 @@ export interface ProcessedPage {
   id: string;
   title: string;
   category: string;
+  tags?: string[];
   content: string;
   createdTime: string;
   lastEditedTime: string;

@@ -52,12 +52,14 @@ export class NotionService {
     try {
       const title = this.extractTitle(page.properties);
       const category = this.extractCategory(page.properties);
+      const tags = this.extractTags(page.properties);
       const content = await this.fetchPageContent(page.id);
       
       return {
         id: page.id,
         title: title || 'Untitled',
         category: category || 'Uncategorized',
+        tags,
         content: content,
         createdTime: page.created_time,
         lastEditedTime: page.last_edited_time,
@@ -97,6 +99,21 @@ export class NotionService {
     }
     
     return 'Uncategorized';
+  }
+
+  private extractTags(properties: any): string[] | undefined {
+    const tagProps = ['Tags', 'tags', 'Label', 'labels', 'Tag', 'tag'];
+    for (const prop of tagProps) {
+      const property = properties[prop];
+      if (!property) continue;
+      if (Array.isArray(property?.multi_select) && property.multi_select.length > 0) {
+        return property.multi_select.map((t: any) => t.name).filter(Boolean);
+      }
+      if (property?.select?.name) {
+        return [property.select.name];
+      }
+    }
+    return undefined;
   }
 
   private async fetchPageContent(pageId: string): Promise<string> {

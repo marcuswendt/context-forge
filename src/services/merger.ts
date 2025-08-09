@@ -13,10 +13,12 @@ export class MarkdownMerger {
 
   async mergeByCategory(
     groups: CategoryGroup[],
-    options: ExportOptions
+    options: ExportOptions,
+    onCategoryDone?: (group: CategoryGroup) => void
   ): Promise<void> {
     await this.ensureOutputDir(options.outputDir);
 
+    const bar = logger.createProgressBar(groups.length, 'Markdown:');
     for (const group of groups) {
       const filename = `${this.processor.sanitizeFilename(group.category)}.md`;
       const filepath = path.join(options.outputDir, filename);
@@ -24,8 +26,13 @@ export class MarkdownMerger {
       const content = this.generateCategoryMarkdown(group, options);
       await fs.writeFile(filepath, content, 'utf-8');
       
-      logger.success(`Created ${filename} with ${group.pages.length} pages`);
+      const subpageCount = group.pages.reduce((acc, p) => acc + this.extractSubpageHeadings(p.content).length, 0);
+      const subpagesNote = subpageCount > 0 ? ` (+${subpageCount} subpages)` : '';
+      logger.success(`Created ${filename} with ${group.pages.length} pages${subpagesNote}`);
+      bar.increment(1, `${group.category}`);
+      if (onCategoryDone) onCategoryDone(group);
     }
+    bar.stop();
   }
 
   async mergeAll(
@@ -39,7 +46,9 @@ export class MarkdownMerger {
     const content = this.generateAllPagesMarkdown(pages, options);
     
     await fs.writeFile(filepath, content, 'utf-8');
-    logger.success(`Created ${filename} with ${pages.length} pages`);
+    const totalSubpages = pages.reduce((acc, p) => acc + this.extractSubpageHeadings(p.content).length, 0);
+    const subpagesNote = totalSubpages > 0 ? ` (+${totalSubpages} subpages)` : '';
+    logger.success(`Created ${filename} with ${pages.length} pages${subpagesNote}`);
   }
 
   private generateCategoryMarkdown(
@@ -138,6 +147,9 @@ export class MarkdownMerger {
       lines.push('> **Metadata**');
       lines.push(`> - Created: ${new Date(page.createdTime).toLocaleString()}`);
       lines.push(`> - Last Edited: ${new Date(page.lastEditedTime).toLocaleString()}`);
+      if (page.tags && page.tags.length > 0) {
+        lines.push(`> - Tags: ${page.tags.join(', ')}`);
+      }
       lines.push(`> - [View in Notion](${page.url})`);
       lines.push('');
     }

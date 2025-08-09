@@ -33,11 +33,13 @@ export class PdfGenerator {
 
   async generateCategoryPdfs(
     groups: CategoryGroup[],
-    options: ExportOptions
+    options: ExportOptions,
+    onCategoryDone?: (group: CategoryGroup) => void
   ): Promise<void> {
     const tempDir = path.join(options.outputDir, '.temp');
     await this.ensureDir(tempDir);
 
+    const bar = logger.createProgressBar(groups.length, 'PDF:');
     for (const group of groups) {
       const filename = `${this.sanitizeFilename(group.category)}`;
       const mdPath = path.join(tempDir, `${filename}.md`);
@@ -47,7 +49,10 @@ export class PdfGenerator {
       await fs.writeFile(mdPath, content, 'utf-8');
       
       await this.generateFromMarkdown(mdPath, pdfPath);
+      bar.increment(1, `${group.category}`);
+      if (onCategoryDone) onCategoryDone(group);
     }
+    bar.stop();
 
     await this.cleanupTemp(tempDir);
   }

@@ -93,27 +93,27 @@ program
       const groups = processor.groupByCategory(pagesToExport);
       
       if (exportOptions.format === 'markdown' || exportOptions.format === 'both') {
-        logger.startSpinner('Generating markdown files...');
-        
-          if (exportOptions.mergeByCategory) {
-            await merger.mergeByCategory(groups, exportOptions);
-          } else {
-            await merger.mergeAll(pagesToExport, exportOptions);
-          }
-        
-        logger.stopSpinner(true, 'Markdown files generated');
+        logger.info('Generating markdown files...');
+        if (exportOptions.mergeByCategory) {
+          const totalBar = logger.createProgressBar(groups.length, 'Total Markdown:');
+          await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment());
+          totalBar.stop();
+        } else {
+          await merger.mergeAll(pagesToExport, exportOptions);
+        }
+        logger.success('Markdown files generated');
       }
       
       if (exportOptions.format === 'pdf' || exportOptions.format === 'both') {
-        logger.startSpinner('Generating PDF files...');
-        
-          if (exportOptions.mergeByCategory) {
-            await pdfGenerator.generateCategoryPdfs(groups, exportOptions);
-          } else {
-            await pdfGenerator.generateAllPagesPdf(pagesToExport, exportOptions);
-          }
-        
-        logger.stopSpinner(true, 'PDF files generated');
+        logger.info('Generating PDF files...');
+        if (exportOptions.mergeByCategory) {
+          const totalBar = logger.createProgressBar(groups.length, 'Total PDF:');
+          await pdfGenerator.generateCategoryPdfs(groups, exportOptions, () => totalBar.increment());
+          totalBar.stop();
+        } else {
+          await pdfGenerator.generateAllPagesPdf(pagesToExport, exportOptions);
+        }
+        logger.success('PDF files generated');
       }
       
       logger.success(`Export complete! Files saved to ${path.resolve(exportOptions.outputDir)}`);
