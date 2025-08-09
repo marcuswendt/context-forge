@@ -8,7 +8,7 @@ export class ConfigManager {
   private configPath: string;
 
   constructor(configPath?: string) {
-    this.configPath = configPath || path.join(process.cwd(), '.notion-bundler.json');
+    this.configPath = configPath || path.join(process.cwd(), '.context-forge.json');
     dotenv.config();
   }
 
@@ -64,9 +64,9 @@ export class ConfigManager {
       export: this.getDefaultExportOptions(),
     };
 
-    const samplePath = path.join(process.cwd(), '.notion-bundler.sample.json');
+    const samplePath = path.join(process.cwd(), '.context-forge.sample.json');
     await fs.writeFile(samplePath, JSON.stringify(sampleConfig, null, 2), 'utf-8');
-    logger.success('Created sample configuration file: .notion-bundler.sample.json');
+    logger.success('Created sample configuration file: .context-forge.sample.json');
   }
 
   async createEnvFile(): Promise<void> {

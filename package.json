@@ -4,7 +4,7 @@
   "description": "Download and merge Notion database content into organized files",
   "main": "dist/index.js",
   "bin": {
-    "notion-bundler": "dist/cli.js"
+    "context-forge": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

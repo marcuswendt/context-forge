@@ -15,7 +15,7 @@ A command-line tool to download and merge content from your Notion database into
 ## Installation
 
 ```bash
-npm install -g notion-bundler
+npm install -g context-forge
 ```
 
 Or run locally:
@@ -34,7 +34,7 @@ npm run build
 
 2. Initialize configuration files:
 ```bash
-notion-bundler init
+context-forge init
 ```
 
 3. Update `.env` with your credentials:
@@ -45,7 +45,7 @@ NOTION_DATABASE_ID=your-database-id
 
 4. Export your content:
 ```bash
-notion-bundler export
+context-forge export
 ```
 
 ## Usage
@@ -53,7 +53,7 @@ notion-bundler export
 ### Export Command
 
 ```bash
-notion-bundler export [options]
+context-forge export [options]
 ```
 
 Options:
@@ -71,30 +71,30 @@ Options:
 
 Export with command-line options:
 ```bash
-notion-bundler export -k your-api-key -d your-database-id -f both -o ./exports
+context-forge export -k your-api-key -d your-database-id -f both -o ./exports
 ```
 
 Export to PDF without metadata:
 ```bash
-notion-bundler export -f pdf --no-include-metadata
+context-forge export -f pdf --no-include-metadata
 ```
 
 Export all pages to a single file:
 ```bash
-notion-bundler export --no-merge-by-category
+context-forge export --no-merge-by-category
 ```
 
 ## Configuration
 
 ### Priority Order
 1. Command-line options (highest priority)
-2. Configuration file (`.notion-bundler.json`)
+2. Configuration file (`.context-forge.json`)
 3. Environment variables
 4. Default values
 
 ### Configuration File
 
-Create a `.notion-bundler.json`:
+Create a `.context-forge.json`:
 
 ```json
 {

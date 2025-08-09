@@ -13,7 +13,7 @@ import { ExportOptions } from './types';
 const program = new Command();
 
 program
-  .name('notion-bundler')
+  .name('context-forge')
   .description('Download and merge Notion database content into organized files')
   .version('1.0.0');
 
