@@ -3,12 +3,35 @@ import * as path from 'path';
 import { ProcessedPage, CategoryGroup, ExportOptions } from '../types';
 import { ContentProcessor } from './processor';
 import { logger } from '../utils/logger';
+import { sanitizeFilename } from '../utils/strings';
 
 export class MarkdownMerger {
   private processor: ContentProcessor;
 
   constructor() {
     this.processor = new ContentProcessor();
+  }
+
+  async exportAsFolderStructure(
+    groups: CategoryGroup[],
+    options: ExportOptions,
+    onCategoryDone?: (group: CategoryGroup) => void
+  ): Promise<void> {
+    await this.ensureOutputDir(options.outputDir);
+
+    const bar = logger.createProgressBar(groups.length, 'Markdown (folders):');
+    for (const group of groups) {
+      const categoryDir = path.join(options.outputDir, sanitizeFilename(group.category));
+      await this.ensureDir(categoryDir);
+
+      for (const page of group.pages) {
+        await this.writePageAsFolder(categoryDir, page, options);
+      }
+
+      bar.increment(1, `${group.category}`);
+      if (onCategoryDone) onCategoryDone(group);
+    }
+    bar.stop();
   }
 
   async mergeByCategory(
@@ -20,7 +43,7 @@ export class MarkdownMerger {
 
     const bar = logger.createProgressBar(groups.length, 'Markdown:');
     for (const group of groups) {
-      const filename = `${this.processor.sanitizeFilename(group.category)}.md`;
+      const filename = `${sanitizeFilename(group.category)}.md`;
       const filepath = path.join(options.outputDir, filename);
       
       const content = this.generateCategoryMarkdown(group, options);
@@ -122,7 +145,7 @@ export class MarkdownMerger {
       lines.push('');
       
       for (const page of group.pages) {
-        lines.push(this.generatePageMarkdown(page, options, 3));
+      lines.push(this.generatePageMarkdown(page, options, 3));
         lines.push('');
         lines.push('---');
         lines.push('');
@@ -157,6 +180,104 @@ export class MarkdownMerger {
     lines.push(page.content);
     
     return lines.join('\n');
+  }
+
+  private splitPageIntoMainAndSubpages(markdown: string): { main: string; subpages: { title: string; content: string }[] } {
+    if (!markdown || markdown.trim().length === 0) {
+      return { main: '', subpages: [] };
+    }
+
+    const lines = markdown.split('\n');
+    const mainLines: string[] = [];
+    const subpages: { title: string; content: string }[] = [];
+
+    let i = 0;
+    let inCode = false;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.startsWith('```')) {
+        inCode = !inCode;
+        mainLines.push(line);
+        i++;
+        continue;
+      }
+      if (inCode) {
+        mainLines.push(line);
+        i++;
+        continue;
+      }
+
+      if (trimmed === '<!--subpage-->') {
+        // Find the heading line
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim().length === 0) j++;
+        if (j < lines.length) {
+          const headingMatch = lines[j].match(/^(#{1,6})\s+(.+?)\s*$/);
+          if (headingMatch) {
+            const title = headingMatch[2].trim();
+            // Collect until next subpage marker or EOF
+            let k = j + 1;
+            const buf: string[] = [lines[j]]; // include heading
+            let localInCode = false;
+            while (k < lines.length) {
+              const l = lines[k];
+              const t = l.trim();
+              if (t.startsWith('```')) localInCode = !localInCode;
+              if (!localInCode && t === '<!--subpage-->') break;
+              buf.push(l);
+              k++;
+            }
+            subpages.push({ title, content: buf.join('\n') });
+            i = k; // continue after collected block
+            continue;
+          }
+        }
+      }
+
+      mainLines.push(line);
+      i++;
+    }
+
+    return { main: mainLines.join('\n'), subpages };
+  }
+
+  private async writePageAsFolder(baseDir: string, page: ProcessedPage, options: ExportOptions): Promise<void> {
+    const { main, subpages } = this.splitPageIntoMainAndSubpages(page.content);
+
+    // Header (used for either index.md or single file)
+    const headerLines: string[] = [];
+    headerLines.push(`# ${page.title}`);
+    headerLines.push('');
+    if (options.includeMetadata) {
+      headerLines.push('> **Metadata**');
+      headerLines.push(`> - Created: ${new Date(page.createdTime).toLocaleString()}`);
+      headerLines.push(`> - Last Edited: ${new Date(page.lastEditedTime).toLocaleString()}`);
+      if (page.tags && page.tags.length > 0) {
+        headerLines.push(`> - Tags: ${page.tags.join(', ')}`);
+      }
+      headerLines.push(`> - [View in Notion](${page.url})`);
+      headerLines.push('');
+    }
+
+    const combined = [headerLines.join('\n'), main].filter(Boolean).join('\n');
+
+    // If there are no subpages, write a single file in the category folder
+    if (subpages.length === 0) {
+      const fileName = `${sanitizeFilename(page.title) || 'page'}.md`;
+      await fs.writeFile(path.join(baseDir, fileName), combined, 'utf-8');
+      return;
+    }
+
+    // Otherwise, create a folder for the page and write index + subpages
+    const pageDir = path.join(baseDir, sanitizeFilename(page.title));
+    await this.ensureDir(pageDir);
+    await fs.writeFile(path.join(pageDir, 'index.md'), combined, 'utf-8');
+
+    for (const sub of subpages) {
+      const fileName = `${sanitizeFilename(sub.title) || 'subpage'}.md`;
+      await fs.writeFile(path.join(pageDir, fileName), sub.content, 'utf-8');
+    }
   }
 
   private createAnchor(text: string): string {
@@ -206,6 +327,14 @@ export class MarkdownMerger {
     } catch {
       await fs.mkdir(dir, { recursive: true });
       logger.info(`Created output directory: ${dir}`);
+    }
+  }
+
+  private async ensureDir(dir: string): Promise<void> {
+    try {
+      await fs.access(dir);
+    } catch {
+      await fs.mkdir(dir, { recursive: true });
     }
   }
 }

@@ -25,6 +25,7 @@ program
   .option('-d, --database-id <id>', 'Notion database ID')
   .option('-f, --format <format>', 'Output format (markdown, pdf, both)', 'markdown')
   .option('-o, --output <dir>', 'Output directory', './output')
+  .option('--folder-structure', 'Export markdown into folders mirroring categories and subpages', false)
   .option('--merge-by-category', 'Merge pages by category', true)
   .option('--no-merge-by-category', 'Don\'t merge pages by category')
   .option('--include-metadata', 'Include page metadata', true)
@@ -61,6 +62,7 @@ program
         mergeByCategory: options.mergeByCategory,
         includeMetadata: options.includeMetadata,
         includeToc: options.includeToc,
+        folderStructure: options.folderStructure,
       };
       
       logger.startSpinner('Connecting to Notion...');
@@ -94,7 +96,11 @@ program
       
       if (exportOptions.format === 'markdown' || exportOptions.format === 'both') {
         logger.info('Generating markdown files...');
-        if (exportOptions.mergeByCategory) {
+        if (exportOptions.folderStructure) {
+          const totalBar = logger.createProgressBar(groups.length, 'Total Markdown (folders):');
+          await merger.exportAsFolderStructure(groups, exportOptions, () => totalBar.increment());
+          totalBar.stop();
+        } else if (exportOptions.mergeByCategory) {
           const totalBar = logger.createProgressBar(groups.length, 'Total Markdown:');
           await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment());
           totalBar.stop();

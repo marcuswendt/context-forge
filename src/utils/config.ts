@@ -52,6 +52,7 @@ export class ConfigManager {
       mergeByCategory: true,
       includeMetadata: true,
       includeToc: true,
+      folderStructure: false,
     };
   }
 

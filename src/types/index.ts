@@ -25,4 +25,5 @@ export interface ExportOptions {
   mergeByCategory: boolean;
   includeMetadata: boolean;
   includeToc: boolean;
+  folderStructure?: boolean;
 }

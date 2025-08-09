@@ -1,4 +1,5 @@
 import { ProcessedPage, CategoryGroup } from '../types';
+import { sanitizeFilename } from '../utils/strings';
 import { logger } from '../utils/logger';
 
 export class ContentProcessor {
@@ -39,11 +40,6 @@ export class ContentProcessor {
   }
 
   sanitizeFilename(name: string): string {
-    return name
-      .replace(/[<>:"/\\|?*]/g, '-')
-      .replace(/\s+/g, '_')
-      .replace(/-+/g, '-')
-      .replace(/_+/g, '_')
-      .trim();
+    return sanitizeFilename(name);
   }
 }

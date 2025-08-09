@@ -1,6 +1,7 @@
 import { Client } from '@notionhq/client';
 import { ProcessedPage } from '../types';
 import { logger } from '../utils/logger';
+import { createConcurrencyLimiter, retry } from '../utils/async';
 
 export class NotionService {
   private client: Client;
@@ -18,20 +19,28 @@ export class NotionService {
 
     logger.info('Fetching pages from Notion database...');
 
+    const limit = createConcurrencyLimiter(5);
+
     while (hasMore) {
       try {
-        const response = await this.client.databases.query({
+        const response = await retry(() => this.client.databases.query({
           database_id: this.databaseId,
           start_cursor: cursor,
+        }), {
+          shouldRetry: (err: any) => {
+            const code = err?.status || err?.code;
+            return code === 429 || (typeof code === 'number' && code >= 500);
+          }
         });
 
-        for (const page of response.results) {
-          if ('properties' in page) {
-            const processed = await this.processPage(page);
-            if (processed) {
-              pages.push(processed);
-            }
-          }
+        const processedBatch = await Promise.all(
+          response.results
+            .filter((page: any) => 'properties' in page)
+            .map((page: any) => limit(() => this.processPage(page)))
+        );
+
+        for (const p of processedBatch) {
+          if (p) pages.push(p);
         }
 
         cursor = response.next_cursor || undefined;
@@ -132,25 +141,22 @@ export class NotionService {
     headingDepth: number,
     childDepth: number
   ): Promise<string> {
-    const allBlocks: any[] = [];
+    const contentParts: string[] = [];
     let cursor: string | undefined = undefined;
     let hasMore = true;
 
-    // Paginate through all children blocks
     while (hasMore) {
-      const response = await this.client.blocks.children.list({
+      const response = await retry(() => this.client.blocks.children.list({
         block_id: blockId,
         start_cursor: cursor,
+      }), {
+        shouldRetry: (err: any) => {
+          const code = err?.status || err?.code;
+          return code === 429 || (typeof code === 'number' && code >= 500);
+        }
       });
 
-      allBlocks.push(...response.results);
-      cursor = (response as any).next_cursor || undefined;
-      hasMore = (response as any).has_more === true;
-    }
-
-    const contentParts: string[] = [];
-
-    for (const block of allBlocks) {
+      for (const block of response.results as any[]) {
       // Handle subpages (child_page) as chapters
       if (block.type === 'child_page' && block.child_page) {
         const childTitle: string = block.child_page.title || 'Untitled';
@@ -178,14 +184,47 @@ export class NotionService {
         }
 
         contentParts.push('');
-        continue;
+          continue;
+        }
+
+        // For other blocks, render text and optionally include children
+        const baseText = this.extractBlockText(block);
+
+        // If the block has children, render them and combine appropriately
+        if (block.has_children) {
+          let childrenText = '';
+          try {
+            childrenText = await this.renderPageBlocks(
+              block.id,
+              headingDepth,
+              childDepth + 1
+            );
+          } catch (err) {
+            logger.warn(`Failed to render children for block ${block.id} (${block.type})`);
+          }
+
+          // Special formatting for quotes: wrap combined content in Markdown blockquote
+          if (block.type === 'quote') {
+            const combined = [baseText, childrenText].filter(Boolean).join('\n\n');
+            const quoted = this.formatAsBlockQuote(combined);
+            if (quoted) contentParts.push(quoted);
+          } else {
+            const combined = [baseText, childrenText].filter(Boolean).join('\n\n');
+            if (combined.trim().length > 0) contentParts.push(combined);
+          }
+        } else {
+          // No children: push plain text, with quote formatting if needed
+          if (block.type === 'quote') {
+            const quoted = this.formatAsBlockQuote(baseText);
+            if (quoted) contentParts.push(quoted);
+          } else if (baseText) {
+            contentParts.push(baseText);
+          }
+        }
       }
 
-      // For other blocks, render as plain text
-      const text = this.extractBlockText(block);
-      if (text) {
-        contentParts.push(text);
-      }
+      cursor = (response as any).next_cursor || undefined;
+      hasMore = (response as any).has_more === true;
     }
 
     return contentParts.join('\n\n');
@@ -225,5 +264,17 @@ export class NotionService {
       default:
         return '';
     }
+  }
+
+  private formatAsBlockQuote(text: string): string {
+    if (!text || text.trim().length === 0) return '';
+    const lines = text.split(/\r?\n/);
+    const quotedLines = lines.map(line => {
+      if (line.trim().length === 0) {
+        return '>';
+      }
+      return `> ${line}`;
+    });
+    return quotedLines.join('\n');
   }
 }

@@ -3,6 +3,7 @@ import * as path from 'path';
 import markdownPdf from 'markdown-pdf';
 import { ProcessedPage, CategoryGroup, ExportOptions } from '../types';
 import { MarkdownMerger } from './merger';
+import { sanitizeFilename } from '../utils/strings';
 import { logger } from '../utils/logger';
 
 export class PdfGenerator {
@@ -37,11 +38,12 @@ export class PdfGenerator {
     onCategoryDone?: (group: CategoryGroup) => void
   ): Promise<void> {
     const tempDir = path.join(options.outputDir, '.temp');
+    await this.ensureDir(options.outputDir);
     await this.ensureDir(tempDir);
 
     const bar = logger.createProgressBar(groups.length, 'PDF:');
     for (const group of groups) {
-      const filename = `${this.sanitizeFilename(group.category)}`;
+      const filename = `${sanitizeFilename(group.category)}`;
       const mdPath = path.join(tempDir, `${filename}.md`);
       const pdfPath = path.join(options.outputDir, `${filename}.pdf`);
 
@@ -63,6 +65,7 @@ export class PdfGenerator {
     filename: string = 'all_notes.pdf'
   ): Promise<void> {
     const tempDir = path.join(options.outputDir, '.temp');
+    await this.ensureDir(options.outputDir);
     await this.ensureDir(tempDir);
 
     const mdPath = path.join(tempDir, 'all_notes.md');
@@ -113,15 +116,6 @@ export class PdfGenerator {
     }
 
     return lines.join('\n');
-  }
-
-  private sanitizeFilename(name: string): string {
-    return name
-      .replace(/[<>:"/\\|?*]/g, '-')
-      .replace(/\s+/g, '_')
-      .replace(/-+/g, '-')
-      .replace(/_+/g, '_')
-      .trim();
   }
 
   private async ensureDir(dir: string): Promise<void> {

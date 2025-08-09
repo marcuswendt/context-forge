@@ -7,23 +7,28 @@ class Logger {
   private activeBars: Set<any> = new Set();
 
   info(message: string, ...args: any[]) {
-    console.log(chalk.blue('9'), message, ...args);
+    console.info(chalk.blue('ℹ️'), message, ...args);
   }
 
   success(message: string, ...args: any[]) {
-    console.log(chalk.green(''), message, ...args);
+    console.log(chalk.green('✅'), message, ...args);
   }
 
   warn(message: string, ...args: any[]) {
-    console.log(chalk.yellow('�'), message, ...args);
+    console.warn(chalk.yellow('⚠️'), message, ...args);
   }
 
   error(message: string, ...args: any[]) {
-    console.log(chalk.red(''), message, ...args);
+    console.error(chalk.red('❌'), message, ...args);
   }
 
   startSpinner(message: string) {
-    this.spinner = ora(message).start();
+    if (process.stdout.isTTY) {
+      this.spinner = ora(message).start();
+    } else {
+      this.spinner = null;
+      this.info(message);
+    }
   }
 
   updateSpinner(message: string) {
@@ -40,10 +45,26 @@ class Logger {
         this.spinner.fail(message);
       }
       this.spinner = null;
+    } else if (message) {
+      if (success) this.success(message); else this.error(message);
     }
   }
 
   createProgressBar(total: number, message?: string) {
+    if (!process.stdout.isTTY) {
+      let current = 0;
+      return {
+        increment: (delta: number = 1, text?: string) => {
+          current = Math.min(total, current + delta);
+          if (message) this.info(`${message} ${current}/${total}${text ? ` | ${text}` : ''}`);
+        },
+        update: (position: number, text?: string) => {
+          current = Math.min(total, Math.max(0, position));
+          if (message) this.info(`${message} ${current}/${total}${text ? ` | ${text}` : ''}`);
+        },
+        stop: () => {},
+      } as const;
+    }
     const bar = new cliProgress.SingleBar(
       {
         format: `${message ? message + ' ' : ''}{bar} {value}/{total} | {percentage}% | {text}`,

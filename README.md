@@ -63,6 +63,7 @@ Options:
 - `-o, --output <dir>` - Output directory (default: ./output)
 - `--merge-by-category` - Merge pages by category (default: true)
 - `--no-merge-by-category` - Export all pages to a single file
+- `--folder-structure` - Export markdown into folders mirroring categories and page subpages (default: false)
 - `--include-metadata` - Include page metadata (default: true)
 - `--include-toc` - Include table of contents (default: true)
 - `-c, --config <path>` - Path to configuration file
@@ -82,6 +83,11 @@ context-forge export -f pdf --no-include-metadata
 Export all pages to a single file:
 ```bash
 context-forge export --no-merge-by-category
+```
+
+Export as folder structure (categories as folders, pages as subfolders, subpages as files):
+```bash
+context-forge export --folder-structure
 ```
 
 ## Configuration
@@ -107,10 +113,29 @@ Create a `.context-forge.json`:
     "outputDir": "./output",
     "mergeByCategory": true,
     "includeMetadata": true,
-    "includeToc": true
+    "includeToc": true,
+    "folderStructure": false
   }
 }
 ```
+### Folder Structure Mode
+
+When `--folder-structure` is enabled, output will be organized as:
+
+```
+output/
+  <Category>/
+    <Page A>.md                # if Page A has no subpages
+    <Page B>/                  # if Page B has subpages
+      index.md                 # Page B main content and metadata
+      <Subpage 1>.md
+      <Subpage 2>.md
+```
+
+Notes:
+- Subpages are detected from Notion child pages; they become separate `.md` files within the page folder.
+- Metadata inclusion is controlled by `--include-metadata`.
+
 
 ## Database Setup
 
