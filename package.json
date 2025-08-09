@@ -1,0 +1,38 @@
+{
+  "name": "notion-bundler",
+  "version": "1.0.0",
+  "description": "Download and merge Notion database content into organized files",
+  "main": "dist/index.js",
+  "bin": {
+    "notion-bundler": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "categories": "npm run dev -- categories",
+    "export": "npm run dev -- export",
+    "start": "node dist/cli.js",
+    "clean": "rm -rf dist",
+    "prepublish": "npm run build"
+  },
+  "keywords": ["notion", "export", "markdown", "pdf", "bundler"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@notionhq/client": "^4.0.1",
+    "chalk": "^5.5.0",
+    "commander": "^14.0.0",
+    "dotenv": "^17.2.1",
+    "markdown-pdf": "^11.0.0",
+    "ora": "^8.2.0",
+    "remark-html": "^16.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5"
+  }
+}

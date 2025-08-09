@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+.env
+.notion-bundler.json
+*.log
+.DS_Store
+.temp/

@@ -1,0 +1,13 @@
+{
+  "notion": {
+    "apiKey": "your-notion-api-key",
+    "databaseId": "your-database-id"
+  },
+  "export": {
+    "format": "markdown",
+    "outputDir": "./output",
+    "mergeByCategory": true,
+    "includeMetadata": true,
+    "includeToc": true
+  }
+}
