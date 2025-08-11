@@ -18,8 +18,6 @@ export class MarkdownMerger {
     onCategoryDone?: (group: CategoryGroup) => void
   ): Promise<void> {
     await this.ensureOutputDir(options.outputDir);
-
-    const bar = logger.createProgressBar(groups.length, 'Markdown (folders):');
     for (const group of groups) {
       const categoryDir = path.join(options.outputDir, sanitizeFilename(group.category));
       await this.ensureDir(categoryDir);
@@ -28,10 +26,8 @@ export class MarkdownMerger {
         await this.writePageAsFolder(categoryDir, page, options);
       }
 
-      bar.increment(1, `${group.category}`);
       if (onCategoryDone) onCategoryDone(group);
     }
-    bar.stop();
   }
 
   async mergeByCategory(
@@ -40,8 +36,6 @@ export class MarkdownMerger {
     onCategoryDone?: (group: CategoryGroup) => void
   ): Promise<void> {
     await this.ensureOutputDir(options.outputDir);
-
-    const bar = logger.createProgressBar(groups.length, 'Markdown:');
     for (const group of groups) {
       const filename = `${sanitizeFilename(group.category)}.md`;
       const filepath = path.join(options.outputDir, filename);
@@ -51,11 +45,9 @@ export class MarkdownMerger {
       
       const subpageCount = group.pages.reduce((acc, p) => acc + this.extractSubpageHeadings(p.content).length, 0);
       const subpagesNote = subpageCount > 0 ? ` (+${subpageCount} subpages)` : '';
-      logger.success(`Created ${filename} with ${group.pages.length} pages${subpagesNote}`);
-      bar.increment(1, `${group.category}`);
+      logger.info(`Created ${filename} with ${group.pages.length} pages${subpagesNote}`);
       if (onCategoryDone) onCategoryDone(group);
     }
-    bar.stop();
   }
 
   async mergeAll(

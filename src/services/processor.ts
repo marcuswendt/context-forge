@@ -18,9 +18,8 @@ export class ContentProcessor {
     for (const [category, pages] of groups) {
       result.push({
         category,
-        pages: pages.sort((a, b) => 
-          new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime()
-        ),
+        // Preserve the original order from Notion by keeping pages as-added
+        pages,
       });
     }
 

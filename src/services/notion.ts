@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client';
-import { ProcessedPage } from '../types';
+import { ProcessedPage, FetchPagesOptions } from '../types';
 import { logger } from '../utils/logger';
 import { createConcurrencyLimiter, retry } from '../utils/async';
 
@@ -12,12 +12,30 @@ export class NotionService {
     this.databaseId = databaseId;
   }
 
-  async fetchAllPages(): Promise<ProcessedPage[]> {
+  async fetchAllPages(
+    exportFlagPropertyNameOrOptions?: string | FetchPagesOptions,
+    onProgressCb?: (pagesFetched: number) => void
+  ): Promise<ProcessedPage[]> {
     const pages: ProcessedPage[] = [];
     let cursor: string | undefined = undefined;
     let hasMore = true;
 
-    logger.info('Fetching pages from Notion database...');
+    logger.debug('Starting Notion fetch loop...');
+
+    // Normalize options
+    let exportFlagPropertyName: string | undefined;
+    let orderByPropertyName: string | undefined;
+    let orderDirection: 'ascending' | 'descending' | undefined;
+    let onProgress: ((pagesFetched: number) => void) | undefined;
+    if (typeof exportFlagPropertyNameOrOptions === 'string' || exportFlagPropertyNameOrOptions === undefined) {
+      exportFlagPropertyName = exportFlagPropertyNameOrOptions as string | undefined;
+      onProgress = onProgressCb;
+    } else {
+      exportFlagPropertyName = exportFlagPropertyNameOrOptions.exportFlagPropertyName;
+      orderByPropertyName = exportFlagPropertyNameOrOptions.orderByPropertyName;
+      orderDirection = exportFlagPropertyNameOrOptions.orderDirection;
+      onProgress = exportFlagPropertyNameOrOptions.onProgress ?? onProgressCb;
+    }
 
     const limit = createConcurrencyLimiter(5);
 
@@ -26,6 +44,14 @@ export class NotionService {
         const response = await retry(() => this.client.databases.query({
           database_id: this.databaseId,
           start_cursor: cursor,
+          sorts: orderByPropertyName
+            ? [
+                {
+                  property: orderByPropertyName,
+                  direction: orderDirection || 'ascending',
+                } as any,
+              ]
+            : undefined,
         }), {
           shouldRetry: (err: any) => {
             const code = err?.status || err?.code;
@@ -36,6 +62,7 @@ export class NotionService {
         const processedBatch = await Promise.all(
           response.results
             .filter((page: any) => 'properties' in page)
+            .filter((page: any) => this.isExportEnabled((page as any).properties, exportFlagPropertyName))
             .map((page: any) => limit(() => this.processPage(page)))
         );
 
@@ -46,15 +73,25 @@ export class NotionService {
         cursor = response.next_cursor || undefined;
         hasMore = response.has_more;
         
-        logger.info(`Fetched ${pages.length} pages so far...`);
+        if (onProgress) onProgress(pages.length);
+        logger.debug(`Fetched ${pages.length} pages so far...`);
       } catch (error) {
         logger.error('Error fetching pages:', error);
         throw error;
       }
     }
 
-    logger.success(`Successfully fetched ${pages.length} pages`);
+    logger.info(`Fetched ${pages.length} pages in total`);
     return pages;
+  }
+
+  private isExportEnabled(properties: any, exportFlagPropertyName?: string): boolean {
+    if (!exportFlagPropertyName) return true;
+    const prop = properties?.[exportFlagPropertyName];
+    if (!prop) return false;
+    if (typeof prop?.checkbox === 'boolean') return prop.checkbox === true;
+    if (prop?.type === 'checkbox' && typeof prop?.checkbox === 'boolean') return prop.checkbox === true;
+    return false;
   }
 
   private async processPage(page: any): Promise<ProcessedPage | null> {

@@ -25,6 +25,7 @@ program
   .option('-d, --database-id <id>', 'Notion database ID')
   .option('-f, --format <format>', 'Output format (markdown, pdf, both)', 'markdown')
   .option('-o, --output <dir>', 'Output directory', './output')
+  .option('--export-flag <property>', 'Only export pages where this Notion checkbox property is true (default: Export)')
   .option('--folder-structure', 'Export markdown into folders mirroring categories and subpages', false)
   .option('--merge-by-category', 'Merge pages by category', true)
   .option('--no-merge-by-category', 'Don\'t merge pages by category')
@@ -32,11 +33,22 @@ program
   .option('--no-include-metadata', 'Don\'t include page metadata')
   .option('--include-toc', 'Include table of contents', true)
   .option('--no-include-toc', 'Don\'t include table of contents')
+  .option('--order-by <property>', 'Order results by this Notion property (e.g. Order, Title)')
+  .option('--order-direction <dir>', 'Order direction (ascending|descending)', 'ascending')
   .option('-c, --config <path>', 'Path to configuration file')
+  .option('-q, --quiet', 'Minimal logging (errors only)')
+  .option('--log-level <level>', 'Log level (silent, error, warn, info, debug)', 'info')
   .action(async (categoryArg, options) => {
     try {
       const configManager = new ConfigManager(options.config);
       
+      // Configure logging level
+      if (options.quiet) {
+        logger.setLevel('silent');
+      } else if (options.logLevel) {
+        logger.setLevel(options.logLevel);
+      }
+
       let notionConfig = configManager.getNotionConfig();
       let exportOptions: ExportOptions = configManager.getDefaultExportOptions();
       
@@ -63,6 +75,9 @@ program
         includeMetadata: options.includeMetadata,
         includeToc: options.includeToc,
         folderStructure: options.folderStructure,
+        exportFlagPropertyName: options.exportFlag || exportOptions.exportFlagPropertyName,
+        orderByPropertyName: options.orderBy || exportOptions.orderByPropertyName,
+        orderDirection: options.orderDirection || exportOptions.orderDirection,
       };
       
       logger.startSpinner('Connecting to Notion...');
@@ -73,7 +88,19 @@ program
       const pdfGenerator = new PdfGenerator();
       
       logger.updateSpinner('Fetching pages from Notion database...');
-      const pages = await notionService.fetchAllPages();
+      let lastProgressShown = 0;
+      const pages = await notionService.fetchAllPages({
+        exportFlagPropertyName: exportOptions.exportFlagPropertyName,
+        orderByPropertyName: exportOptions.orderByPropertyName,
+        orderDirection: exportOptions.orderDirection,
+        onProgress: (count) => {
+          // Throttle spinner updates to avoid flicker
+          if (count - lastProgressShown >= 10) {
+            lastProgressShown = count;
+            logger.updateSpinner(`Fetching pages from Notion database... (${count})`);
+          }
+        },
+      });
       
       if (pages.length === 0) {
         logger.stopSpinner(false, 'No pages found in the database');
@@ -97,12 +124,12 @@ program
       if (exportOptions.format === 'markdown' || exportOptions.format === 'both') {
         logger.info('Generating markdown files...');
         if (exportOptions.folderStructure) {
-          const totalBar = logger.createProgressBar(groups.length, 'Total Markdown (folders):');
-          await merger.exportAsFolderStructure(groups, exportOptions, () => totalBar.increment());
+          const totalBar = logger.createProgressBar(groups.length, 'Markdown (folders):');
+          await merger.exportAsFolderStructure(groups, exportOptions, () => totalBar.increment(1));
           totalBar.stop();
         } else if (exportOptions.mergeByCategory) {
-          const totalBar = logger.createProgressBar(groups.length, 'Total Markdown:');
-          await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment());
+          const totalBar = logger.createProgressBar(groups.length, 'Markdown:');
+          await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment(1));
           totalBar.stop();
         } else {
           await merger.mergeAll(pagesToExport, exportOptions);
@@ -113,8 +140,8 @@ program
       if (exportOptions.format === 'pdf' || exportOptions.format === 'both') {
         logger.info('Generating PDF files...');
         if (exportOptions.mergeByCategory) {
-          const totalBar = logger.createProgressBar(groups.length, 'Total PDF:');
-          await pdfGenerator.generateCategoryPdfs(groups, exportOptions, () => totalBar.increment());
+          const totalBar = logger.createProgressBar(groups.length, 'PDF:');
+          await pdfGenerator.generateCategoryPdfs(groups, exportOptions, () => totalBar.increment(1));
           totalBar.stop();
         } else {
           await pdfGenerator.generateAllPagesPdf(pagesToExport, exportOptions);

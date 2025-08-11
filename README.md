@@ -66,6 +66,9 @@ Options:
 - `--folder-structure` - Export markdown into folders mirroring categories and page subpages (default: false)
 - `--include-metadata` - Include page metadata (default: true)
 - `--include-toc` - Include table of contents (default: true)
+- `--export-flag <property>` - Only export pages where this Notion checkbox property is true (default: Export)
+- `--order-by <property>` - Order results by this Notion database property (e.g. `Order`, `Title`)
+- `--order-direction <dir>` - Order direction: `ascending` or `descending` (default: `ascending`)
 - `-c, --config <path>` - Path to configuration file
 
 ### Examples
@@ -114,7 +117,10 @@ Create a `.context-forge.json`:
     "mergeByCategory": true,
     "includeMetadata": true,
     "includeToc": true,
-    "folderStructure": false
+    "folderStructure": false,
+    "exportFlagPropertyName": "Export",
+    "orderByPropertyName": "Order",
+    "orderDirection": "ascending"
   }
 }
 ```

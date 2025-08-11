@@ -26,4 +26,16 @@ export interface ExportOptions {
   includeMetadata: boolean;
   includeToc: boolean;
   folderStructure?: boolean;
+  // Name of the Notion checkbox property that gates whether a page should be exported
+  exportFlagPropertyName?: string;
+  // Optional: Match your Notion view ordering by specifying a property and direction
+  orderByPropertyName?: string;
+  orderDirection?: 'ascending' | 'descending';
+}
+
+export interface FetchPagesOptions {
+  exportFlagPropertyName?: string;
+  orderByPropertyName?: string;
+  orderDirection?: 'ascending' | 'descending';
+  onProgress?: (pagesFetched: number) => void;
 }

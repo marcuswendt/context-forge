@@ -53,6 +53,9 @@ export class ConfigManager {
       includeMetadata: true,
       includeToc: true,
       folderStructure: false,
+      exportFlagPropertyName: 'Export',
+      orderByPropertyName: undefined,
+      orderDirection: 'ascending',
     };
   }
 
