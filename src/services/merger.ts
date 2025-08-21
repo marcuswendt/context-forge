@@ -128,7 +128,17 @@ export class MarkdownMerger {
     const lines: string[] = [];
     const groups = this.processor.groupByCategory(pages);
     
-    lines.push('# All Notes');
+    let documentTitle = options.outputName && options.outputName.trim().length > 0
+      ? options.outputName.trim()
+      : 'All Notes';
+    if (options.timestamped) {
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      documentTitle = `${documentTitle} - ${yyyy}-${mm}-${dd}`;
+    }
+    lines.push(`# ${documentTitle}`);
     lines.push('');
     
     if (options.includeToc) {

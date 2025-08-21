@@ -64,8 +64,23 @@ export class PdfGenerator {
     await this.ensureDir(options.outputDir);
     await this.ensureDir(tempDir);
 
-    const mdPath = path.join(tempDir, 'all_notes.md');
-    const pdfPath = path.join(options.outputDir, filename);
+    // Determine base name consistent with MarkdownMerger.mergeAll()
+    let baseName = options.outputName && options.outputName.trim().length > 0
+      ? sanitizeFilename(options.outputName.trim())
+      : 'all_notes';
+    if (options.timestamped) {
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      baseName = `${baseName}-${yyyy}-${mm}-${dd}`;
+    }
+
+    const mdPath = path.join(tempDir, `${baseName}.md`);
+    const resolvedPdfName = options.outputName && options.outputName.trim().length > 0
+      ? `${baseName}.pdf`
+      : filename;
+    const pdfPath = path.join(options.outputDir, resolvedPdfName);
 
     const tempOptions = { ...options };
     await this.merger.mergeAll(pages, { ...tempOptions, outputDir: tempDir });
