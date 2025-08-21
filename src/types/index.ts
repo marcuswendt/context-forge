@@ -26,6 +26,14 @@ export interface ExportOptions {
   includeMetadata: boolean;
   includeToc: boolean;
   folderStructure?: boolean;
+  // Merge all exported pages into a single markdown file
+  mergeAll?: boolean;
+  // If true, keep only the latest version for pages that have versioned titles (e.g., "v2", "version 3.1")
+  keepLatestVersions?: boolean;
+  // Optional base name for the merged single-file output
+  outputName?: string;
+  // If true, append a YYYY-MM-DD date suffix to the merged filename
+  timestamped?: boolean;
   // Name of the Notion checkbox property that gates whether a page should be exported
   exportFlagPropertyName?: string;
   // Optional: Match your Notion view ordering by specifying a property and direction

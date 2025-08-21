@@ -16,13 +16,20 @@ export class ContentProcessor {
 
     const parseTitle = (title: string): { baseTitle: string; versionParts: number[] | null } => {
       const trimmed = title.trim();
-      // Match suffix forms like: "... v2", "... V 12", "... version 3.1", optionally with surrounding brackets
-      const match = trimmed.match(/^(.*?)(?:[\s\-–—_\(\[]*)[vV](?:ersion)?\s*(\d+(?:\.\d+)*)\s*[\)\]]?\s*$/);
-      if (!match) {
+      // Find the last occurrence of a version token like: v2, v 2, ver 2, version 1.2
+      // Ensure 'v' begins at a word boundary to avoid matching inside words like "Revenue".
+      const re = /\b(?:v(?:ersion)?|ver)\s*(\d+(?:\.\d+)*)\b/ig;
+      let lastMatch: RegExpExecArray | null = null;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(trimmed)) !== null) {
+        lastMatch = m;
+      }
+      if (!lastMatch) {
         return { baseTitle: trimmed, versionParts: null };
       }
-      const baseRaw = match[1].trim().replace(/[\-–—_\(:]+$/,'').trim();
-      const versionStr = match[2];
+      const matchIndex = lastMatch.index;
+      const baseRaw = trimmed.slice(0, matchIndex).trim().replace(/[\-–—_:\(\)\[\]\s]+$/,'').trim();
+      const versionStr = lastMatch[1];
       const versionParts = versionStr.split('.').map(p => parseInt(p, 10)).map(n => (isNaN(n) ? 0 : n));
       return { baseTitle: baseRaw || trimmed, versionParts };
     };
@@ -49,8 +56,10 @@ export class ContentProcessor {
     const result: ProcessedPage[] = [];
     let removed = 0;
 
+    const hasVersion = (item: Versioned): item is Versioned & { versionParts: number[] } => item.versionParts !== null;
+
     for (const [, list] of groups) {
-      const withVersion = list.filter(item => item.versionParts !== null) as Array<Required<Versioned>>;
+      const withVersion = list.filter(hasVersion);
       if (withVersion.length === 0) {
         // No version info for this base title: keep all as-is
         result.push(...list.map(l => l.page));

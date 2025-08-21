@@ -43,7 +43,10 @@ export class MarkdownMerger {
       const content = this.generateCategoryMarkdown(group, options);
       await fs.writeFile(filepath, content, 'utf-8');
       
-      const subpageCount = group.pages.reduce((acc, p) => acc + this.extractSubpageHeadings(p.content).length, 0);
+      const subpageCount = group.pages.reduce((acc, p) => {
+        const filtered = this.filterSubpagesInMarkdown(p.content, options);
+        return acc + this.extractSubpageHeadings(filtered).length;
+      }, 0);
       const subpagesNote = subpageCount > 0 ? ` (+${subpageCount} subpages)` : '';
       logger.info(`Created ${filename} with ${group.pages.length} pages${subpagesNote}`);
       if (onCategoryDone) onCategoryDone(group);
@@ -56,14 +59,29 @@ export class MarkdownMerger {
     filename: string = 'all_notes.md'
   ): Promise<void> {
     await this.ensureOutputDir(options.outputDir);
-    
-    const filepath = path.join(options.outputDir, filename);
+
+    // Determine final filename based on options
+    let baseName = options.outputName && options.outputName.trim().length > 0
+      ? sanitizeFilename(options.outputName.trim())
+      : filename.replace(/\.md$/i, '');
+    if (options.timestamped) {
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      baseName = `${baseName}-${yyyy}-${mm}-${dd}`;
+    }
+    const finalFilename = `${baseName}.md`;
+    const filepath = path.join(options.outputDir, finalFilename);
     const content = this.generateAllPagesMarkdown(pages, options);
     
     await fs.writeFile(filepath, content, 'utf-8');
-    const totalSubpages = pages.reduce((acc, p) => acc + this.extractSubpageHeadings(p.content).length, 0);
+    const totalSubpages = pages.reduce((acc, p) => {
+      const filtered = this.filterSubpagesInMarkdown(p.content, options);
+      return acc + this.extractSubpageHeadings(filtered).length;
+    }, 0);
     const subpagesNote = totalSubpages > 0 ? ` (+${totalSubpages} subpages)` : '';
-    logger.success(`Created ${filename} with ${pages.length} pages${subpagesNote}`);
+    logger.success(`Created ${finalFilename} with ${pages.length} pages${subpagesNote}`);
   }
 
   private generateCategoryMarkdown(
@@ -81,8 +99,9 @@ export class MarkdownMerger {
       for (const page of group.pages) {
         const anchor = this.createAnchor(page.title);
         lines.push(`- [${page.title}](#${anchor})`);
-        // Only include subpages as level-2 items. We detect subpages via the injected marker.
-        const subpages = this.extractSubpageHeadings(page.content);
+        // Only include subpages as level-2 items. Use filtered content to avoid listing removed versions.
+        const filtered = this.filterSubpagesInMarkdown(page.content, options);
+        const subpages = this.extractSubpageHeadings(filtered);
         for (const s of subpages) {
           lines.push(`  - [${s}](#${this.createAnchor(s)})`);
         }
@@ -121,7 +140,8 @@ export class MarkdownMerger {
         for (const page of group.pages) {
           const pageAnchor = this.createAnchor(page.title);
           lines.push(`  - [${page.title}](#${pageAnchor})`);
-          const subpages = this.extractSubpageHeadings(page.content);
+          const filtered = this.filterSubpagesInMarkdown(page.content, options);
+          const subpages = this.extractSubpageHeadings(filtered);
           for (const s of subpages) {
             lines.push(`    - [${s}](#${this.createAnchor(s)})`);
           }
@@ -169,7 +189,8 @@ export class MarkdownMerger {
       lines.push('');
     }
     
-    lines.push(page.content);
+    const filteredContent = this.filterSubpagesInMarkdown(page.content, options);
+    lines.push(filteredContent);
     
     return lines.join('\n');
   }
@@ -236,6 +257,7 @@ export class MarkdownMerger {
 
   private async writePageAsFolder(baseDir: string, page: ProcessedPage, options: ExportOptions): Promise<void> {
     const { main, subpages } = this.splitPageIntoMainAndSubpages(page.content);
+    const filteredSubpages = options.keepLatestVersions ? this.filterSubpageEntries(subpages) : subpages;
 
     // Header (used for either index.md or single file)
     const headerLines: string[] = [];
@@ -254,8 +276,8 @@ export class MarkdownMerger {
 
     const combined = [headerLines.join('\n'), main].filter(Boolean).join('\n');
 
-    // If there are no subpages, write a single file in the category folder
-    if (subpages.length === 0) {
+    // If there are no subpages after filtering, write a single file in the category folder
+    if (filteredSubpages.length === 0) {
       const fileName = `${sanitizeFilename(page.title) || 'page'}.md`;
       await fs.writeFile(path.join(baseDir, fileName), combined, 'utf-8');
       return;
@@ -266,7 +288,7 @@ export class MarkdownMerger {
     await this.ensureDir(pageDir);
     await fs.writeFile(path.join(pageDir, 'index.md'), combined, 'utf-8');
 
-    for (const sub of subpages) {
+    for (const sub of filteredSubpages) {
       const fileName = `${sanitizeFilename(sub.title) || 'subpage'}.md`;
       await fs.writeFile(path.join(pageDir, fileName), sub.content, 'utf-8');
     }
@@ -311,6 +333,158 @@ export class MarkdownMerger {
       }
     }
     return result;
+  }
+
+  private filterSubpagesInMarkdown(markdown: string, options: ExportOptions): string {
+    if (!options.keepLatestVersions) return markdown;
+    if (!markdown || markdown.trim().length === 0) return markdown;
+
+    const lines = markdown.split('\n');
+    type Block = { title: string; start: number; end: number };
+    const blocks: Block[] = [];
+
+    let i = 0;
+    let inCode = false;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.startsWith('```')) {
+        inCode = !inCode;
+        i++;
+        continue;
+      }
+      if (inCode) {
+        i++;
+        continue;
+      }
+      if (trimmed === '<!--subpage-->') {
+        // heading follows after optional blank lines
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim().length === 0) j++;
+        if (j < lines.length) {
+          const m = lines[j].match(/^(#{1,6})\s+(.+?)\s*$/);
+          if (m) {
+            const title = m[2].trim();
+            // collect until next marker or EOF
+            let k = j + 1;
+            let localInCode = false;
+            while (k < lines.length) {
+              const l = lines[k];
+              const t = l.trim();
+              if (t.startsWith('```')) localInCode = !localInCode;
+              if (!localInCode && t === '<!--subpage-->') break;
+              k++;
+            }
+            blocks.push({ title, start: i, end: k - 1 });
+            i = k;
+            continue;
+          }
+        }
+      }
+      i++;
+    }
+
+    if (blocks.length === 0) return markdown;
+
+    // Group by base title and determine which to keep
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const groups = new Map<string, Array<{ block: Block; version: number[] | null; base: string }>>();
+    for (const b of blocks) {
+      const { baseTitle, versionParts } = this.parseVersionFromTitle(b.title);
+      const key = normalize(baseTitle);
+      const list = groups.get(key) || [];
+      list.push({ block: b, version: versionParts, base: baseTitle });
+      groups.set(key, list);
+    }
+
+    const compareVersionParts = (a: number[], b: number[]): number => {
+      const len = Math.max(a.length, b.length);
+      for (let idx = 0; idx < len; idx++) {
+        const av = a[idx] ?? 0;
+        const bv = b[idx] ?? 0;
+        if (av !== bv) return av - bv;
+      }
+      return 0;
+    };
+
+    const toRemove: Set<number> = new Set(); // store line indices to remove
+    for (const [, list] of groups) {
+      const withVersion = list.filter(item => item.version !== null) as Array<{ block: Block; version: number[]; base: string }>;
+      if (withVersion.length === 0) {
+        continue; // keep all unversioned if none has version
+      }
+      // keep only the highest version; remove others including any unversioned in same group
+      let best = withVersion[0];
+      for (let idx = 1; idx < withVersion.length; idx++) {
+        const cur = withVersion[idx];
+        if (compareVersionParts(best.version, cur.version) < 0) best = cur;
+      }
+      for (const item of list) {
+        const isBest = item.block.start === best.block.start && item.block.end === best.block.end;
+        if (!isBest) {
+          for (let l = item.block.start; l <= item.block.end; l++) toRemove.add(l);
+        }
+      }
+    }
+
+    if (toRemove.size === 0) return markdown;
+    const kept: string[] = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      if (!toRemove.has(idx)) kept.push(lines[idx]);
+    }
+    return kept.join('\n');
+  }
+
+  private parseVersionFromTitle(title: string): { baseTitle: string; versionParts: number[] | null } {
+    const trimmed = title.trim();
+    const re = /\b(?:v(?:ersion)?|ver)\s*(\d+(?:\.\d+)*)\b/ig;
+    let lastMatch: RegExpExecArray | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(trimmed)) !== null) lastMatch = m;
+    if (!lastMatch) return { baseTitle: trimmed, versionParts: null };
+    const matchIndex = lastMatch.index;
+    const baseRaw = trimmed.slice(0, matchIndex).trim().replace(/[\-–—_:()\[\]\s]+$/,'').trim();
+    const versionStr = lastMatch[1];
+    const versionParts = versionStr.split('.').map(p => parseInt(p, 10)).map(n => (isNaN(n) ? 0 : n));
+    return { baseTitle: baseRaw || trimmed, versionParts };
+  }
+
+  private filterSubpageEntries(subpages: { title: string; content: string }[]): { title: string; content: string }[] {
+    if (!subpages || subpages.length === 0) return subpages;
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const groups = new Map<string, Array<{ idx: number; title: string; content: string; version: number[] | null; base: string }>>();
+    for (let i = 0; i < subpages.length; i++) {
+      const s = subpages[i];
+      const { baseTitle, versionParts } = this.parseVersionFromTitle(s.title);
+      const key = normalize(baseTitle);
+      const list = groups.get(key) || [];
+      list.push({ idx: i, title: s.title, content: s.content, version: versionParts, base: baseTitle });
+      groups.set(key, list);
+    }
+    const compareVersionParts = (a: number[], b: number[]): number => {
+      const len = Math.max(a.length, b.length);
+      for (let idx = 0; idx < len; idx++) {
+        const av = a[idx] ?? 0;
+        const bv = b[idx] ?? 0;
+        if (av !== bv) return av - bv;
+      }
+      return 0;
+    };
+    const keep = new Set<number>();
+    for (const [, list] of groups) {
+      const withVersion = list.filter(item => item.version !== null) as Array<{ idx: number; title: string; content: string; version: number[]; base: string }>;
+      if (withVersion.length === 0) {
+        for (const item of list) keep.add(item.idx);
+      } else {
+        let best = withVersion[0];
+        for (let idx = 1; idx < withVersion.length; idx++) {
+          const cur = withVersion[idx];
+          if (compareVersionParts(best.version, cur.version) < 0) best = cur;
+        }
+        keep.add(best.idx);
+      }
+    }
+    return subpages.filter((_, idx) => keep.has(idx));
   }
 
   private async ensureOutputDir(dir: string): Promise<void> {

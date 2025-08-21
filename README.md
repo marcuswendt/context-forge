@@ -61,12 +61,17 @@ Options:
 - `-d, --database-id <id>` - Notion database ID
 - `-f, --format <format>` - Output format: markdown, pdf, or both (default: markdown)
 - `-o, --output <dir>` - Output directory (default: ./output)
+- `-n, --name <name>` - Base name for merged output file (without extension)
+- `--timestamped` - Append YYYY-MM-DD to merged output filename
 - `--merge-by-category` - Merge pages by category (default: true)
-- `--no-merge-by-category` - Export all pages to a single file
+- `--no-merge-by-category` - Don't merge pages by category
+- `--merge-all` - Merge all pages into a single markdown file
 - `--folder-structure` - Export markdown into folders mirroring categories and page subpages (default: false)
+- `--keep-latest-versions` / `--no-keep-latest-versions` - Keep only the latest version for pages with versioned titles (default: on)
 - `--include-metadata` - Include page metadata (default: true)
 - `--include-toc` - Include table of contents (default: true)
 - `--export-flag <property>` - Only export pages where this Notion checkbox property is true (default: Export)
+- `--force-all` - Export all pages, ignoring the export checkbox property
 - `--order-by <property>` - Order results by this Notion database property (e.g. `Order`, `Title`)
 - `--order-direction <dir>` - Order direction: `ascending` or `descending` (default: `ascending`)
 - `-c, --config <path>` - Path to configuration file
@@ -85,12 +90,32 @@ context-forge export -f pdf --no-include-metadata
 
 Export all pages to a single file:
 ```bash
-context-forge export --no-merge-by-category
+context-forge export --merge-all
+```
+
+Merge all pages to a named, timestamped file (e.g., `output/context-2025-08-21.md`):
+```bash
+context-forge export --merge-all --name context --timestamped
 ```
 
 Export as folder structure (categories as folders, pages as subfolders, subpages as files):
 ```bash
 context-forge export --folder-structure
+```
+
+Force export all pages regardless of an `Export` property:
+```bash
+context-forge export --force-all
+```
+
+Only keep the latest version of versioned documents (default behavior):
+```bash
+context-forge export --keep-latest-versions
+```
+
+Include all versions (disable filtering):
+```bash
+context-forge export --no-keep-latest-versions
 ```
 
 ## Configuration
@@ -115,9 +140,13 @@ Create a `.context-forge.json`:
     "format": "markdown",
     "outputDir": "./output",
     "mergeByCategory": true,
+    "keepLatestVersions": true,
+    "mergeAll": false,
     "includeMetadata": true,
     "includeToc": true,
     "folderStructure": false,
+    "outputName": "context",
+    "timestamped": true,
     "exportFlagPropertyName": "Export",
     "orderByPropertyName": "Order",
     "orderDirection": "ascending"

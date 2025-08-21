@@ -25,10 +25,16 @@ program
   .option('-d, --database-id <id>', 'Notion database ID')
   .option('-f, --format <format>', 'Output format (markdown, pdf, both)', 'markdown')
   .option('-o, --output <dir>', 'Output directory', './output')
+  .option('-n, --name <name>', 'Base name for merged output file (without extension)')
+  .option('--timestamped', 'Append YYYY-MM-DD to merged output filename', false)
   .option('--export-flag <property>', 'Only export pages where this Notion checkbox property is true (default: Export)')
+  .option('--force-all', 'Ignore export flag property and export all pages', false)
   .option('--folder-structure', 'Export markdown into folders mirroring categories and subpages', false)
   .option('--merge-by-category', 'Merge pages by category', true)
   .option('--no-merge-by-category', 'Don\'t merge pages by category')
+  .option('--merge-all', 'Merge all pages into a single markdown file', false)
+  .option('--keep-latest-versions', 'Keep only the latest version for pages with versioned titles (e.g., v2, version 3.1)', true)
+  .option('--no-keep-latest-versions', 'Do not filter older versions')
   .option('--include-metadata', 'Include page metadata', true)
   .option('--no-include-metadata', 'Don\'t include page metadata')
   .option('--include-toc', 'Include table of contents', true)
@@ -71,11 +77,15 @@ program
         ...exportOptions,
         format: options.format,
         outputDir: options.output,
+        outputName: options.name || exportOptions.outputName,
+        timestamped: typeof options.timestamped === 'boolean' ? options.timestamped : exportOptions.timestamped,
         mergeByCategory: options.mergeByCategory,
+        mergeAll: options.mergeAll ?? exportOptions.mergeAll,
+        keepLatestVersions: typeof options.keepLatestVersions === 'boolean' ? options.keepLatestVersions : exportOptions.keepLatestVersions,
         includeMetadata: options.includeMetadata,
         includeToc: options.includeToc,
         folderStructure: options.folderStructure,
-        exportFlagPropertyName: options.exportFlag || exportOptions.exportFlagPropertyName,
+        exportFlagPropertyName: options.forceAll ? undefined : (options.exportFlag || exportOptions.exportFlagPropertyName),
         orderByPropertyName: options.orderBy || exportOptions.orderByPropertyName,
         orderDirection: options.orderDirection || exportOptions.orderDirection,
       };
@@ -90,7 +100,7 @@ program
       logger.updateSpinner('Fetching pages from Notion database...');
       let lastProgressShown = 0;
       const pages = await notionService.fetchAllPages({
-        exportFlagPropertyName: exportOptions.exportFlagPropertyName,
+        exportFlagPropertyName: options.forceAll ? undefined : exportOptions.exportFlagPropertyName,
         orderByPropertyName: exportOptions.orderByPropertyName,
         orderDirection: exportOptions.orderDirection,
         onProgress: (count) => {
@@ -110,9 +120,12 @@ program
       logger.stopSpinner(true, `Fetched ${pages.length} pages`);
       
       const nonEmptyPages = processor.filterEmptyPages(pages);
-      const pagesToExport = categoryArg
-        ? nonEmptyPages.filter(p => p.category === categoryArg)
+      const filteredByVersion = exportOptions.keepLatestVersions
+        ? processor.filterLatestVersions(nonEmptyPages)
         : nonEmptyPages;
+      const pagesToExport = categoryArg
+        ? filteredByVersion.filter(p => p.category === categoryArg)
+        : filteredByVersion;
 
       if (categoryArg && pagesToExport.length === 0) {
         logger.warn(`No pages found for category: ${categoryArg}`);
@@ -127,12 +140,14 @@ program
           const totalBar = logger.createProgressBar(groups.length, 'Markdown (folders):');
           await merger.exportAsFolderStructure(groups, exportOptions, () => totalBar.increment(1));
           totalBar.stop();
+        } else if (exportOptions.mergeAll) {
+          await merger.mergeAll(pagesToExport, exportOptions);
         } else if (exportOptions.mergeByCategory) {
           const totalBar = logger.createProgressBar(groups.length, 'Markdown:');
           await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment(1));
           totalBar.stop();
         } else {
-          await merger.mergeAll(pagesToExport, exportOptions);
+          await merger.mergeByCategory(groups, exportOptions);
         }
         logger.success('Markdown files generated');
       }
