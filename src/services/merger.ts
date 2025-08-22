@@ -126,7 +126,7 @@ export class MarkdownMerger {
     options: ExportOptions
   ): string {
     const lines: string[] = [];
-    const groups = this.processor.groupByCategory(pages);
+    const groups = this.processor.groupByCategory(pages, options.categoryOrder);
     
     let documentTitle = options.outputName && options.outputName.trim().length > 0
       ? options.outputName.trim()

@@ -91,7 +91,7 @@ export class ContentProcessor {
     }
     return result;
   }
-  groupByCategory(pages: ProcessedPage[]): CategoryGroup[] {
+  groupByCategory(pages: ProcessedPage[], categoryOrder?: string[] | null): CategoryGroup[] {
     const groups = new Map<string, ProcessedPage[]>();
 
     for (const page of pages) {
@@ -112,6 +112,18 @@ export class ContentProcessor {
     }
 
     logger.info(`Grouped ${pages.length} pages into ${result.length} categories`);
+    if (categoryOrder && categoryOrder.length > 0) {
+      const indexMap = new Map<string, number>();
+      categoryOrder.forEach((name, idx) => indexMap.set(name, idx));
+      return result.sort((a, b) => {
+        const ai = indexMap.get(a.category);
+        const bi = indexMap.get(b.category);
+        if (ai !== undefined && bi !== undefined) return ai - bi; // both known
+        if (ai !== undefined) return -1; // a known, b unknown → a first
+        if (bi !== undefined) return 1;  // b known, a unknown → b first
+        return a.category.localeCompare(b.category); // both unknown → alpha
+      });
+    }
     return result.sort((a, b) => a.category.localeCompare(b.category));
   }
 

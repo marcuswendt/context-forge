@@ -6,6 +6,7 @@ import { createConcurrencyLimiter, retry } from '../utils/async';
 export class NotionService {
   private client: Client;
   private databaseId: string;
+  private cachedCategoryOrder: string[] | null = null;
 
   constructor(apiKey: string, databaseId: string) {
     this.client = new Client({ auth: apiKey });
@@ -83,6 +84,35 @@ export class NotionService {
 
     logger.info(`Fetched ${pages.length} pages in total`);
     return pages;
+  }
+
+  /**
+   * Retrieve the database schema and infer the order of categories from the first
+   * matching select or multi-select property among common names (e.g., Category, Tags, Type).
+   * This reflects the user-defined option order in Notion.
+   */
+  async fetchCategoryOrder(): Promise<string[] | null> {
+    if (this.cachedCategoryOrder) return this.cachedCategoryOrder;
+    try {
+      const db: any = await this.client.databases.retrieve({ database_id: this.databaseId });
+      const candidateProps = ['Category', 'Tags', 'Type', 'category', 'tags', 'type'];
+      for (const key of candidateProps) {
+        const prop = db?.properties?.[key];
+        if (!prop) continue;
+        if (prop.type === 'select' && Array.isArray(prop.select?.options)) {
+          this.cachedCategoryOrder = prop.select.options.map((o: any) => o.name).filter(Boolean);
+          return this.cachedCategoryOrder;
+        }
+        if (prop.type === 'multi_select' && Array.isArray(prop.multi_select?.options)) {
+          this.cachedCategoryOrder = prop.multi_select.options.map((o: any) => o.name).filter(Boolean);
+          return this.cachedCategoryOrder;
+        }
+      }
+      return null;
+    } catch (err) {
+      logger.warn('Failed to fetch category order from Notion schema');
+      return null;
+    }
   }
 
   private isExportEnabled(properties: any, exportFlagPropertyName?: string): boolean {

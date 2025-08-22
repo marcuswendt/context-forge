@@ -118,7 +118,10 @@ program
       }
       
       logger.stopSpinner(true, `Fetched ${pages.length} pages`);
-      
+
+      // Fetch custom Notion category order (from select/multi-select option order)
+      const categoryOrder = await notionService.fetchCategoryOrder();
+      exportOptions = { ...exportOptions, categoryOrder: categoryOrder ?? undefined };
       const nonEmptyPages = processor.filterEmptyPages(pages);
       const filteredByVersion = exportOptions.keepLatestVersions
         ? processor.filterLatestVersions(nonEmptyPages)
@@ -132,7 +135,7 @@ program
         process.exit(0);
       }
 
-      const groups = processor.groupByCategory(pagesToExport);
+      const groups = processor.groupByCategory(pagesToExport, categoryOrder);
       
       if (exportOptions.format === 'markdown' || exportOptions.format === 'both') {
         logger.info('Generating markdown files...');
@@ -206,8 +209,9 @@ program
       logger.stopSpinner(true, `Fetched ${pages.length} pages`);
 
       const nonEmpty = processor.filterEmptyPages(pages);
-      const groups = processor.groupByCategory(nonEmpty);
-      const categories = groups.map(g => g.category).sort((a, b) => a.localeCompare(b));
+      const categoryOrder = await notionService.fetchCategoryOrder();
+      const groups = processor.groupByCategory(nonEmpty, categoryOrder);
+      const categories = groups.map(g => g.category);
 
       if (categories.length === 0) {
         logger.info('No categories found');

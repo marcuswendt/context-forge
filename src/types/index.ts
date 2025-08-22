@@ -39,6 +39,8 @@ export interface ExportOptions {
   // Optional: Match your Notion view ordering by specifying a property and direction
   orderByPropertyName?: string;
   orderDirection?: 'ascending' | 'descending';
+  // Optional: Desired order of categories as defined by Notion select option order
+  categoryOrder?: string[];
 }
 
 export interface FetchPagesOptions {
