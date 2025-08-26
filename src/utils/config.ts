@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { NotionConfig, ExportOptions } from '../types';
+import { ExportOptions, DatabaseConfig, MultiDatabaseConfig } from '../types';
 import { logger } from './logger';
 
 export class ConfigManager {
@@ -12,19 +12,35 @@ export class ConfigManager {
     dotenv.config();
   }
 
-  async loadConfig(): Promise<{ notion: NotionConfig; export: ExportOptions } | null> {
+  async loadMultiDatabaseConfig(): Promise<MultiDatabaseConfig | null> {
     try {
       const configData = await fs.readFile(this.configPath, 'utf-8');
       const config = JSON.parse(configData);
-      logger.info('Loaded configuration from file');
-      return config;
+      
+      // Support both old and new config formats
+      if (config.databases) {
+        return config;
+      } else if (config.notion) {
+        // Convert old format to new format
+        const newConfig: MultiDatabaseConfig = {
+          apiKey: config.notion.apiKey,
+          databases: [{
+            alias: 'default',
+            notionId: config.notion.databaseId,
+            name: 'Default Database'
+          }]
+        };
+        return newConfig;
+      }
+      
+      return null;
     } catch {
-      logger.info('No configuration file found, using defaults');
+      logger.info('No configuration file found');
       return null;
     }
   }
 
-  async saveConfig(config: { notion: NotionConfig; export: ExportOptions }): Promise<void> {
+  async saveMultiDatabaseConfig(config: MultiDatabaseConfig): Promise<void> {
     try {
       const configData = JSON.stringify(config, null, 2);
       await fs.writeFile(this.configPath, configData, 'utf-8');
@@ -34,57 +50,106 @@ export class ConfigManager {
     }
   }
 
-  getNotionConfig(): NotionConfig | null {
-    const apiKey = process.env.NOTION_API_KEY;
-    const databaseId = process.env.NOTION_DATABASE_ID;
-
-    if (!apiKey || !databaseId) {
-      return null;
+  async addDatabase(alias: string, notionId: string, name?: string, description?: string): Promise<void> {
+    const config = await this.loadMultiDatabaseConfig();
+    
+    if (!config) {
+      throw new Error('No configuration found. Please run "context-forge init" first.');
     }
 
-    return { apiKey, databaseId };
+    // Check if alias already exists
+    const existingIndex = config.databases.findIndex(db => db.alias === alias);
+    if (existingIndex !== -1) {
+      // Update existing database
+      config.databases[existingIndex] = { alias, notionId, name, description };
+      logger.info(`Updated database "${alias}"`);
+    } else {
+      // Add new database
+      config.databases.push({ alias, notionId, name, description });
+      logger.info(`Added database "${alias}"`);
+    }
+
+    await this.saveMultiDatabaseConfig(config);
+  }
+
+  async removeDatabase(alias: string): Promise<void> {
+    const config = await this.loadMultiDatabaseConfig();
+    
+    if (!config) {
+      throw new Error('No configuration found');
+    }
+
+    const index = config.databases.findIndex(db => db.alias === alias);
+    if (index === -1) {
+      throw new Error(`Database "${alias}" not found`);
+    }
+
+    config.databases.splice(index, 1);
+
+    await this.saveMultiDatabaseConfig(config);
+    logger.info(`Removed database "${alias}"`);
+  }
+
+  async getDatabaseByAlias(alias: string): Promise<DatabaseConfig | null> {
+    const config = await this.loadMultiDatabaseConfig();
+    if (!config) return null;
+    
+    return config.databases.find(db => db.alias === alias) || null;
+  }
+
+  async getDatabaseByNotionId(notionId: string): Promise<DatabaseConfig | null> {
+    const config = await this.loadMultiDatabaseConfig();
+    if (!config) return null;
+    
+    return config.databases.find(db => db.notionId === notionId) || null;
+  }
+
+  async listDatabases(): Promise<DatabaseConfig[]> {
+    const config = await this.loadMultiDatabaseConfig();
+    return config?.databases || [];
+  }
+
+  async getDefaultDatabase(): Promise<DatabaseConfig | null> {
+    const config = await this.loadMultiDatabaseConfig();
+    if (!config || config.databases.length === 0) return null;
+    
+    // Automatically use the first database in the list as default
+    return config.databases[0];
+  }
+
+  async setDefaultApiKey(apiKey: string): Promise<void> {
+    let config = await this.loadMultiDatabaseConfig();
+    if (!config) {
+      // Create new config if none exists
+      config = {
+        apiKey,
+        databases: [],
+      };
+    } else {
+      config.apiKey = apiKey;
+    }
+
+    await this.saveMultiDatabaseConfig(config);
+    logger.info('Default Notion API key set successfully');
   }
 
   getDefaultExportOptions(): ExportOptions {
     return {
       format: 'markdown',
       outputDir: './output',
-      mergeByCategory: true,
+      mergeByCategory: false, // Changed to false to combine all categories
       keepLatestVersions: true,
       includeMetadata: true,
       includeToc: true,
       folderStructure: false,
-      mergeAll: false,
+      mergeAll: true, // Changed to true to merge all pages into one file
       outputName: undefined,
       timestamped: false,
+      prefixWithTimestamp: true, // Changed to true to prefix with timestamp
+      prefixWithDatabaseName: true, // Changed to true to prefix with database name
       exportFlagPropertyName: 'Export',
       orderByPropertyName: undefined,
       orderDirection: 'ascending',
     };
-  }
-
-  async createSampleConfig(): Promise<void> {
-    const sampleConfig = {
-      notion: {
-        apiKey: 'your-notion-api-key',
-        databaseId: 'your-database-id',
-      },
-      export: this.getDefaultExportOptions(),
-    };
-
-    const samplePath = path.join(process.cwd(), '.context-forge.sample.json');
-    await fs.writeFile(samplePath, JSON.stringify(sampleConfig, null, 2), 'utf-8');
-    logger.success('Created sample configuration file: .context-forge.sample.json');
-  }
-
-  async createEnvFile(): Promise<void> {
-    const envContent = `# Notion API Configuration
-NOTION_API_KEY=your-notion-api-key
-NOTION_DATABASE_ID=your-database-id
-`;
-
-    const envPath = path.join(process.cwd(), '.env.example');
-    await fs.writeFile(envPath, envContent, 'utf-8');
-    logger.success('Created sample environment file: .env.example');
   }
 }

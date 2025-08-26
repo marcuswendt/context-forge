@@ -5,15 +5,125 @@ import { createConcurrencyLimiter, retry } from '../utils/async';
 
 export class NotionService {
   private client: Client;
-  private databaseId: string;
+  private objectId: string;
+  private objectType: 'database' | 'page' | null = null;
   private cachedCategoryOrder: string[] | null = null;
 
-  constructor(apiKey: string, databaseId: string) {
+  constructor(apiKey: string, objectId: string) {
     this.client = new Client({ auth: apiKey });
-    this.databaseId = databaseId;
+    this.objectId = objectId;
+  }
+
+  private async detectObjectType(): Promise<'database' | 'page'> {
+    if (this.objectType) return this.objectType;
+    
+    try {
+      // Try to retrieve as a database first
+      await this.client.databases.retrieve({ database_id: this.objectId });
+      this.objectType = 'database';
+      logger.info('Detected object as a database');
+      return 'database';
+    } catch (error: any) {
+      // Check if it's an authentication error
+      if (error.code === 'unauthorized' || error.status === 401) {
+        throw new Error('Invalid Notion API key. Please check your API key and try again.');
+      }
+      
+      if (error.code === 'object_not_found' || error.status === 404) {
+        // Try as a page
+        try {
+          await this.client.pages.retrieve({ page_id: this.objectId });
+          this.objectType = 'page';
+          logger.info('Detected object as a page');
+          return 'page';
+        } catch (pageError: any) {
+          if (pageError.code === 'unauthorized' || pageError.status === 401) {
+            throw new Error('Invalid Notion API key. Please check your API key and try again.');
+          }
+          throw new Error(`Object ID ${this.objectId} is neither a valid database nor page ID`);
+        }
+      }
+      throw error;
+    }
   }
 
   async fetchAllPages(
+    exportFlagPropertyNameOrOptions?: string | FetchPagesOptions,
+    onProgressCb?: (pagesFetched: number) => void
+  ): Promise<ProcessedPage[]> {
+    const objectType = await this.detectObjectType();
+    
+    if (objectType === 'page') {
+      return this.fetchSinglePageWithChildren();
+    } else {
+      return this.fetchDatabasePages(exportFlagPropertyNameOrOptions, onProgressCb);
+    }
+  }
+
+  private async fetchSinglePageWithChildren(): Promise<ProcessedPage[]> {
+    logger.info('Fetching single page and its children...');
+    
+    try {
+      // Fetch the main page
+      const page = await this.client.pages.retrieve({ page_id: this.objectId });
+      const processedPage = await this.processPage(page);
+      
+      if (!processedPage) {
+        throw new Error('Failed to process main page');
+      }
+
+      // Fetch all child pages recursively
+      const childPages = await this.fetchChildPages(this.objectId);
+      
+      // Combine main page with child pages
+      const allPages = [processedPage, ...childPages];
+      
+      logger.info(`Fetched 1 main page and ${childPages.length} child pages`);
+      return allPages;
+    } catch (error) {
+      logger.error('Error fetching single page:', error);
+      throw error;
+    }
+  }
+
+  private async fetchChildPages(parentPageId: string, depth: number = 0): Promise<ProcessedPage[]> {
+    if (depth > 10) {
+      logger.warn('Maximum recursion depth reached, stopping child page fetch');
+      return [];
+    }
+
+    const childPages: ProcessedPage[] = [];
+    
+    try {
+      const response = await this.client.blocks.children.list({
+        block_id: parentPageId,
+      });
+
+      for (const block of response.results as any[]) {
+        if (block.type === 'child_page' && block.child_page) {
+          try {
+            // Fetch the child page details
+            const childPage = await this.client.pages.retrieve({ page_id: block.id });
+            const processedChild = await this.processPage(childPage);
+            
+            if (processedChild) {
+              // Recursively fetch children of this child page
+              const grandChildren = await this.fetchChildPages(block.id, depth + 1);
+              childPages.push(processedChild, ...grandChildren);
+            }
+          } catch (error) {
+            logger.warn(`Failed to fetch child page ${block.id}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to fetch children for page ${parentPageId}:`, error);
+    }
+
+    return childPages;
+  }
+
+  private async fetchDatabasePages(
     exportFlagPropertyNameOrOptions?: string | FetchPagesOptions,
     onProgressCb?: (pagesFetched: number) => void
   ): Promise<ProcessedPage[]> {
@@ -21,7 +131,7 @@ export class NotionService {
     let cursor: string | undefined = undefined;
     let hasMore = true;
 
-    logger.debug('Starting Notion fetch loop...');
+    logger.debug('Starting Notion database fetch loop...');
 
     // Normalize options
     let exportFlagPropertyName: string | undefined;
@@ -43,7 +153,7 @@ export class NotionService {
     while (hasMore) {
       try {
         const response = await retry(() => this.client.databases.query({
-          database_id: this.databaseId,
+          database_id: this.objectId,
           start_cursor: cursor,
           sorts: orderByPropertyName
             ? [
@@ -94,7 +204,7 @@ export class NotionService {
   async fetchCategoryOrder(): Promise<string[] | null> {
     if (this.cachedCategoryOrder) return this.cachedCategoryOrder;
     try {
-      const db: any = await this.client.databases.retrieve({ database_id: this.databaseId });
+      const db: any = await this.client.databases.retrieve({ database_id: this.objectId });
       const candidateProps = ['Category', 'Tags', 'Type', 'category', 'tags', 'type'];
       for (const key of candidateProps) {
         const prop = db?.properties?.[key];

@@ -1,0 +1,26 @@
+{
+  "apiKey": "your-notion-api-key",
+  "databases": [
+    {
+      "alias": "default",
+      "notionId": "your-database-id",
+      "name": "Default Database",
+      "description": "Main database for content export"
+    }
+  ],
+  "export": {
+    "format": "markdown",
+    "outputDir": "./output",
+    "mergeByCategory": false,
+    "keepLatestVersions": true,
+    "includeMetadata": true,
+    "includeToc": true,
+    "folderStructure": false,
+    "mergeAll": true,
+    "timestamped": false,
+    "prefixWithTimestamp": true,
+    "prefixWithDatabaseName": true,
+    "exportFlagPropertyName": "Export",
+    "orderDirection": "ascending"
+  }
+}

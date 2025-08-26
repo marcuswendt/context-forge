@@ -1,6 +1,13 @@
-export interface NotionConfig {
+export interface DatabaseConfig {
+  alias: string;
+  notionId: string;
+  name?: string;
+  description?: string;
+}
+
+export interface MultiDatabaseConfig {
   apiKey: string;
-  databaseId: string;
+  databases: DatabaseConfig[];
 }
 
 export interface ProcessedPage {
@@ -34,6 +41,12 @@ export interface ExportOptions {
   outputName?: string;
   // If true, append a YYYY-MM-DD date suffix to the merged filename
   timestamped?: boolean;
+  // If true, prefix all exported files with YYYY-MM-DD timestamp
+  prefixWithTimestamp?: boolean;
+  // If true, prefix all exported files with database name
+  prefixWithDatabaseName?: boolean;
+  // Name of the database for file naming
+  databaseName?: string;
   // Name of the Notion checkbox property that gates whether a page should be exported
   exportFlagPropertyName?: string;
   // Optional: Match your Notion view ordering by specifying a property and direction
