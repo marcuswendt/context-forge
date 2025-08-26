@@ -1,16 +1,200 @@
 # Context Forge
 
-A command-line tool to download and merge content from your Notion database into organized markdown or PDF files by category.
+A powerful CLI tool for downloading and merging Notion database content into organized files. Supports both database exports and single page exports with recursive sub-page fetching.
 
 ## Features
 
-- 📥 Download all pages from a Notion database
-- 📁 Automatically organize content by category
-- 📝 Export to Markdown or PDF format
-- 🔀 Merge pages by category or into a single file
-- 📑 Generate table of contents
-- 🔗 Include metadata and Notion links
-- ⚙️ Configurable via environment variables, config files, or CLI options
+- **Multi-Database Support**: Configure and manage multiple Notion databases with aliases
+- **Smart Export**: Automatically detects if an ID is a database or single page
+- **Flexible Output**: Export to Markdown, PDF, or both formats
+- **Category Organization**: Group content by Notion categories with custom ordering
+- **Version Control**: Keep only the latest versions of pages with versioned titles
+- **Metadata Support**: Include page metadata, creation dates, and URLs
+- **Table of Contents**: Generate organized TOCs for better navigation
+- **Folder Structure**: Option to export into folder hierarchies
+- **API Key Management**: Set default API keys with priority resolution
+- **Default Export Behavior**: By default, combines all categories into a single file with timestamp + database name prefix
+
+## Quick Start
+
+1. **Install the tool**:
+   ```bash
+   npm install -g context-forge
+   ```
+
+2. **Set your Notion API key**:
+   ```bash
+   context-forge set-api-key your-notion-api-key
+   # or use the alias
+   context-forge key your-notion-api-key
+   ```
+
+3. **Add a database**:
+   ```bash
+   context-forge add my-db your-database-id
+   ```
+
+4. **Export content**:
+   ```bash
+   context-forge export my-db
+   ```
+
+## Commands
+
+### Database Management
+
+- **`add <alias> <notion-id>`**: Add or update a database configuration
+- **`remove <alias>`**: Remove a database configuration  
+- **`list`**: List all configured databases
+- **`set-api-key <api-key>`** (alias: **`key`**): Set the default Notion API key
+
+### Export
+
+- **`export <database> [category]`**: Export Notion database content
+  - `<database>`: Database alias or direct Notion ID (required)
+  - `[category]`: Optional category filter
+
+### Information
+
+- **`categories <database>`**: List all categories found in the database
+
+## Default Export Behavior
+
+By default, the tool exports a combined output of all categories into a single file, named with timestamp and database name (e.g., `2025-08-26_default_export.md`). This provides a comprehensive view of all content in one file.
+
+## Page vs Database Export
+
+The tool automatically detects whether the provided ID is a database or a single page:
+
+- **Database ID**: Exports all pages from the database, respecting category organization
+- **Page ID**: Exports the single page and recursively fetches all its sub-pages
+
+This makes it easy to export either entire databases or specific page hierarchies.
+
+## API Key Management
+
+The tool resolves API keys in this priority order:
+
+1. **Command line option** (`--api-key`) - Highest priority
+2. **Configuration file** (`.context-forge.json`) - Medium priority  
+3. **Environment variable** (`NOTION_API_KEY`) - Lowest priority
+
+### Examples
+
+```bash
+# Use API key from config file
+context-forge export my-db
+
+# Override with command line API key
+context-forge export my-db --api-key override-key
+
+# Use environment variable (if no config file)
+export NOTION_API_KEY=your-key
+context-forge export my-db
+```
+
+## Configuration
+
+The tool uses a `.context-forge.json` configuration file in your project directory:
+
+```json
+{
+  "apiKey": "your-notion-api-key",
+  "databases": [
+    {
+      "alias": "default",
+      "notionId": "your-database-id",
+      "name": "Default Database",
+      "description": "Main database for content export"
+    }
+  ],
+  "export": {
+    "format": "markdown",
+    "outputDir": "./output",
+    "mergeByCategory": false,
+    "keepLatestVersions": true,
+    "includeMetadata": true,
+    "includeToc": true,
+    "folderStructure": false,
+    "mergeAll": true,
+    "timestamped": false,
+    "prefixWithTimestamp": true,
+    "prefixWithDatabaseName": true,
+    "exportFlagPropertyName": "Export",
+    "orderDirection": "ascending"
+  }
+}
+```
+
+**Note**: The first database in the `databases` array is automatically used as the default.
+
+## Export Options
+
+### File Naming
+
+- **`--prefix-timestamp`**: Prefix files with YYYY-MM-DD timestamp
+- **`--prefix-database-name`**: Prefix files with database name
+- **`--timestamped`**: Append date to merged output filename
+
+### Content Organization
+
+- **`--merge-all`**: Merge all pages into a single file
+- **`--merge-by-category`**: Group pages by category (default: false)
+- **`--folder-structure`**: Export into folder hierarchy
+
+### Content Filtering
+
+- **`--export-flag <property>`**: Only export pages where checkbox property is true
+- **`--force-all`**: Export all pages, ignoring export flags
+- **`--keep-latest-versions`**: Filter out older versions of pages
+
+### Output Control
+
+- **`--format <format>`**: Output format (markdown, pdf, both)
+- **`--include-metadata`**: Include page metadata
+- **`--include-toc`**: Generate table of contents
+- **`--order-by <property>`**: Sort by specific Notion property
+
+## Examples
+
+### Basic Export
+
+```bash
+# Export all content from default database
+context-forge export default
+
+# Export specific category
+context-forge export default "Product Documentation"
+
+# Export with custom output directory
+context-forge export default -o ./docs
+```
+
+### Advanced Export
+
+```bash
+# Export to PDF with custom naming
+context-forge export default --format pdf --prefix-timestamp --prefix-database-name
+
+# Export with folder structure
+context-forge export default --folder-structure
+
+# Export ignoring export flags
+context-forge export default --force-all
+```
+
+### Database Management
+
+```bash
+# Add a new database
+context-forge add projects project-db-id --name "Project Database"
+
+# List all databases
+context-forge list
+
+# Remove a database
+context-forge remove old-db
+```
 
 ## Installation
 
@@ -18,185 +202,23 @@ A command-line tool to download and merge content from your Notion database into
 npm install -g context-forge
 ```
 
-Or run locally:
-
-```bash
-npm install
-npm run build
-```
-
-## Quick Start
-
-1. Get your Notion API key and database ID:
-   - Create an integration at https://www.notion.so/my-integrations
-   - Share your database with the integration
-   - Copy the database ID from the database URL
-
-2. Initialize configuration files:
-```bash
-context-forge init
-```
-
-3. Update `.env` with your credentials:
-```env
-NOTION_API_KEY=your-notion-api-key
-NOTION_DATABASE_ID=your-database-id
-```
-
-4. Export your content:
-```bash
-context-forge export
-```
-
-## Usage
-
-### Export Command
-
-```bash
-context-forge export [options]
-```
-
-Options:
-- `-k, --api-key <key>` - Notion API key
-- `-d, --database-id <id>` - Notion database ID
-- `-f, --format <format>` - Output format: markdown, pdf, or both (default: markdown)
-- `-o, --output <dir>` - Output directory (default: ./output)
-- `-n, --name <name>` - Base name for merged output file (without extension)
-- `--timestamped` - Append YYYY-MM-DD to merged output filename
-- `--merge-by-category` - Merge pages by category (default: true)
-- `--no-merge-by-category` - Don't merge pages by category
-- `--merge-all` - Merge all pages into a single markdown file
-- `--folder-structure` - Export markdown into folders mirroring categories and page subpages (default: false)
-- `--keep-latest-versions` / `--no-keep-latest-versions` - Keep only the latest version for pages with versioned titles (default: on)
-- `--include-metadata` - Include page metadata (default: true)
-- `--include-toc` - Include table of contents (default: true)
-- `--export-flag <property>` - Only export pages where this Notion checkbox property is true (default: Export)
-- `--force-all` - Export all pages, ignoring the export checkbox property
-- `--order-by <property>` - Order results by this Notion database property (e.g. `Order`, `Title`)
-- `--order-direction <dir>` - Order direction: `ascending` or `descending` (default: `ascending`)
-- `-c, --config <path>` - Path to configuration file
-
-### Examples
-
-Export with command-line options:
-```bash
-context-forge export -k your-api-key -d your-database-id -f both -o ./exports
-```
-
-Export to PDF without metadata:
-```bash
-context-forge export -f pdf --no-include-metadata
-```
-
-Export all pages to a single file:
-```bash
-context-forge export --merge-all
-```
-
-Merge all pages to a named, timestamped file (e.g., `output/context-2025-08-21.md`):
-```bash
-context-forge export --merge-all --name context --timestamped
-```
-
-Export as folder structure (categories as folders, pages as subfolders, subpages as files):
-```bash
-context-forge export --folder-structure
-```
-
-Force export all pages regardless of an `Export` property:
-```bash
-context-forge export --force-all
-```
-
-Only keep the latest version of versioned documents (default behavior):
-```bash
-context-forge export --keep-latest-versions
-```
-
-Include all versions (disable filtering):
-```bash
-context-forge export --no-keep-latest-versions
-```
-
-## Configuration
-
-### Priority Order
-1. Command-line options (highest priority)
-2. Configuration file (`.context-forge.json`)
-3. Environment variables
-4. Default values
-
-### Configuration File
-
-Create a `.context-forge.json`:
-
-```json
-{
-  "notion": {
-    "apiKey": "your-notion-api-key",
-    "databaseId": "your-database-id"
-  },
-  "export": {
-    "format": "markdown",
-    "outputDir": "./output",
-    "mergeByCategory": true,
-    "keepLatestVersions": true,
-    "mergeAll": false,
-    "includeMetadata": true,
-    "includeToc": true,
-    "folderStructure": false,
-    "outputName": "context",
-    "timestamped": true,
-    "exportFlagPropertyName": "Export",
-    "orderByPropertyName": "Order",
-    "orderDirection": "ascending"
-  }
-}
-```
-### Folder Structure Mode
-
-When `--folder-structure` is enabled, output will be organized as:
-
-```
-output/
-  <Category>/
-    <Page A>.md                # if Page A has no subpages
-    <Page B>/                  # if Page B has subpages
-      index.md                 # Page B main content and metadata
-      <Subpage 1>.md
-      <Subpage 2>.md
-```
-
-Notes:
-- Subpages are detected from Notion child pages; they become separate `.md` files within the page folder.
-- Metadata inclusion is controlled by `--include-metadata`.
-
-
-## Database Setup
-
-Your Notion database should have:
-- A title property (Title, Name, etc.)
-- A category property (Category, Tags, Type, etc.) for organization
-- Content in the page body
-
-The tool automatically detects common property names.
-
 ## Development
 
 ```bash
+# Clone the repository
+git clone https://github.com/yourusername/context-forge.git
+cd context-forge
+
 # Install dependencies
 npm install
-
-# Run in development mode
-npm run dev -- export
 
 # Build the project
 npm run build
 
-# Run built version
-npm start -- export
+# Run in development mode
+npm run dev
 ```
 
 ## License
 
-ISC
+MIT
