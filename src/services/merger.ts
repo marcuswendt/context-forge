@@ -64,6 +64,23 @@ export class MarkdownMerger {
     let baseName = options.outputName && options.outputName.trim().length > 0
       ? sanitizeFilename(options.outputName.trim())
       : filename.replace(/\.md$/i, '');
+    
+    // Add timestamp prefix if enabled
+    if (options.prefixWithTimestamp) {
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      baseName = `${yyyy}-${mm}-${dd}-${baseName}`;
+    }
+    
+    // Add database name prefix if enabled and available
+    if (options.prefixWithDatabaseName && options.databaseName) {
+      const dbPrefix = sanitizeFilename(options.databaseName);
+      baseName = `${dbPrefix}-${baseName}`;
+    }
+    
+    // Legacy timestamped option (append suffix)
     if (options.timestamped) {
       const now = new Date();
       const yyyy = String(now.getFullYear());
@@ -71,6 +88,7 @@ export class MarkdownMerger {
       const dd = String(now.getDate()).padStart(2, '0');
       baseName = `${baseName}-${yyyy}-${mm}-${dd}`;
     }
+    
     const finalFilename = `${baseName}.md`;
     const filepath = path.join(options.outputDir, finalFilename);
     const content = this.generateAllPagesMarkdown(pages, options);

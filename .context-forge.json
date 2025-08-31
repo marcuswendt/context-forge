@@ -1,11 +1,9 @@
 {
-  "apiKey": "your-notion-api-key",
+  "apiKey": "your-notion-api-key-here",
   "databases": [
     {
-      "alias": "default",
-      "notionId": "your-database-id",
-      "name": "Default Database",
-      "description": "Main database for content export"
+      "alias": "ci",
+      "notionId": "249883f2648180fcb30fe475fc2fe1a1"
     }
   ],
   "export": {

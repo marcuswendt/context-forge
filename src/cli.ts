@@ -12,6 +12,11 @@ import { ExportOptions, DatabaseConfig } from './types';
 
 const program = new Command();
 
+// Helper function to check if a CLI option was explicitly provided
+function wasOptionExplicitlyProvided(optionName: string): boolean {
+  return process.argv.some(arg => arg === `--${optionName}` || arg === `--no-${optionName}`);
+}
+
 // Shared database resolution logic
 async function resolveDatabase(configManager: ConfigManager, databaseArg: string, overrideApiKey?: string): Promise<{ databaseId: string; apiKey: string; dbConfig?: DatabaseConfig }> {
   let databaseId: string;
@@ -195,17 +200,17 @@ program
       ...exportOptions,
       format: options.format || exportOptions.format,
       outputDir: options.output || exportOptions.outputDir,
-      mergeByCategory: options.mergeByCategory,
-      mergeAll: options.mergeAll,
+      mergeByCategory: wasOptionExplicitlyProvided('merge-by-category') ? options.mergeByCategory : exportOptions.mergeByCategory,
+      mergeAll: wasOptionExplicitlyProvided('merge-all') ? options.mergeAll : exportOptions.mergeAll,
       outputName: options.name || exportOptions.outputName,
-      timestamped: options.timestamped || exportOptions.timestamped,
-      prefixWithTimestamp: options.prefixTimestamp || exportOptions.prefixWithTimestamp,
-      prefixWithDatabaseName: options.prefixDatabaseName || exportOptions.prefixWithDatabaseName,
+      timestamped: wasOptionExplicitlyProvided('timestamped') ? options.timestamped : exportOptions.timestamped,
+      prefixWithTimestamp: wasOptionExplicitlyProvided('prefix-timestamp') ? options.prefixTimestamp : exportOptions.prefixWithTimestamp,
+      prefixWithDatabaseName: wasOptionExplicitlyProvided('prefix-database-name') ? options.prefixDatabaseName : exportOptions.prefixWithDatabaseName,
       databaseName: dbConfig?.name || dbConfig?.alias,
-      folderStructure: options.folderStructure,
-      keepLatestVersions: options.keepLatestVersions,
-      includeMetadata: options.includeMetadata,
-      includeToc: options.includeToc,
+      folderStructure: wasOptionExplicitlyProvided('folder-structure') ? options.folderStructure : exportOptions.folderStructure,
+      keepLatestVersions: wasOptionExplicitlyProvided('keep-latest-versions') ? options.keepLatestVersions : exportOptions.keepLatestVersions,
+      includeMetadata: wasOptionExplicitlyProvided('include-metadata') ? options.includeMetadata : exportOptions.includeMetadata,
+      includeToc: wasOptionExplicitlyProvided('include-toc') ? options.includeToc : exportOptions.includeToc,
       exportFlagPropertyName: options.forceAll ? undefined : (options.exportFlag || exportOptions.exportFlagPropertyName),
       orderByPropertyName: options.orderBy || exportOptions.orderByPropertyName,
       orderDirection: options.orderDirection || exportOptions.orderDirection,
@@ -258,20 +263,45 @@ program
 
     const groups = processor.groupByCategory(pagesToExport, categoryOrder);
     
+    // Track created files for the completion message
+    const createdFiles: string[] = [];
+    
     if (exportOptions.format === 'markdown' || exportOptions.format === 'both') {
       logger.info('Generating markdown files...');
       if (exportOptions.folderStructure) {
         const totalBar = logger.createProgressBar(groups.length, 'Markdown (folders):');
         await merger.exportAsFolderStructure(groups, exportOptions, () => totalBar.increment(1));
         totalBar.stop();
+        // For folder structure, we can't easily track individual files, so just show the directory
+        createdFiles.push('markdown files in folder structure');
       } else if (exportOptions.mergeAll) {
+        // For mergeAll, we can determine the filename based on options
+        let filename = 'all_notes.md';
+        if (exportOptions.outputName) {
+          filename = `${exportOptions.outputName}.md`;
+        }
+        if (exportOptions.prefixWithTimestamp) {
+          const now = new Date();
+          const yyyy = String(now.getFullYear());
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          filename = `${yyyy}-${mm}-${dd}-${filename}`;
+        }
+        if (exportOptions.prefixWithDatabaseName && exportOptions.databaseName) {
+          const dbPrefix = exportOptions.databaseName.replace(/[<>:"/\\|?*]/g, '-').replace(/\s+/g, '_').replace(/-+/g, '-').replace(/_+/g, '_').trim();
+          filename = `${dbPrefix}-${filename}`;
+        }
         await merger.mergeAll(pagesToExport, exportOptions);
+        createdFiles.push(filename);
       } else if (exportOptions.mergeByCategory) {
         const totalBar = logger.createProgressBar(groups.length, 'Markdown:');
         await merger.mergeByCategory(groups, exportOptions, () => totalBar.increment(1));
         totalBar.stop();
+        // For mergeByCategory, we can't easily track individual files, so just show the count
+        createdFiles.push(`${groups.length} category files`);
       } else {
         await merger.mergeByCategory(groups, exportOptions);
+        createdFiles.push(`${groups.length} category files`);
       }
       logger.success('Markdown files generated');
     }
@@ -282,13 +312,34 @@ program
         const totalBar = logger.createProgressBar(groups.length, 'PDF:');
         await pdfGenerator.generateCategoryPdfs(groups, exportOptions, () => totalBar.increment(1));
         totalBar.stop();
+        createdFiles.push(`${groups.length} PDF files`);
       } else {
+        // For mergeAll PDF, determine the filename
+        let filename = 'all_notes.pdf';
+        if (exportOptions.outputName) {
+          filename = `${exportOptions.outputName}.pdf`;
+        }
+        if (exportOptions.prefixWithTimestamp) {
+          const now = new Date();
+          const yyyy = String(now.getFullYear());
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          filename = `${yyyy}-${mm}-${dd}-${filename}`;
+        }
+        if (exportOptions.prefixWithDatabaseName && exportOptions.databaseName) {
+          const dbPrefix = exportOptions.databaseName.replace(/[<>:"/\\|?*]/g, '-').replace(/\s+/g, '_').replace(/-+/g, '-').replace(/_+/g, '_').trim();
+          filename = `${dbPrefix}-${filename}`;
+        }
         await pdfGenerator.generateAllPagesPdf(pagesToExport, exportOptions);
+        createdFiles.push(filename);
       }
       logger.success('PDF files generated');
     }
     
-    logger.success(`Export complete! Files saved to ${path.resolve(exportOptions.outputDir)}`);
+    // Show completion message with created files
+    const filesList = createdFiles.join(', ');
+    logger.success(`Export complete! Created: ${filesList}`);
+    logger.success(`Files saved to: ${path.resolve(exportOptions.outputDir)}`);
   }));
 
 program
