@@ -228,7 +228,7 @@ export class NotionService {
   private isExportEnabled(properties: any, exportFlagPropertyName?: string): boolean {
     if (!exportFlagPropertyName) return true;
     const prop = properties?.[exportFlagPropertyName];
-    if (!prop) return false;
+    if (!prop) return true; // If the export property doesn't exist, export everything
     if (typeof prop?.checkbox === 'boolean') return prop.checkbox === true;
     if (prop?.type === 'checkbox' && typeof prop?.checkbox === 'boolean') return prop.checkbox === true;
     return false;
