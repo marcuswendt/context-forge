@@ -16,7 +16,7 @@ export class NotionService {
 
   private async detectObjectType(): Promise<'database' | 'page'> {
     if (this.objectType) return this.objectType;
-    
+
     try {
       // Try to retrieve as a database first
       await this.client.databases.retrieve({ database_id: this.objectId });
@@ -28,8 +28,15 @@ export class NotionService {
       if (error.code === 'unauthorized' || error.status === 401) {
         throw new Error('Invalid Notion API key. Please check your API key and try again.');
       }
-      
-      if (error.code === 'object_not_found' || error.status === 404) {
+
+      // Handle both 404 (object_not_found) and 400 (validation_error when it's a page, not a database)
+      const isNotDatabase =
+        error.code === 'object_not_found' ||
+        error.status === 404 ||
+        error.code === 'validation_error' ||
+        error.status === 400;
+
+      if (isNotDatabase) {
         // Try as a page
         try {
           await this.client.pages.retrieve({ page_id: this.objectId });
@@ -61,66 +68,24 @@ export class NotionService {
   }
 
   private async fetchSinglePageWithChildren(): Promise<ProcessedPage[]> {
-    logger.info('Fetching single page and its children...');
-    
+    logger.info('Fetching page with nested content...');
+
     try {
-      // Fetch the main page
+      // Fetch the main page - its content will recursively include all child pages
+      // via renderPageBlocks(), so we don't need to fetch children separately
       const page = await this.client.pages.retrieve({ page_id: this.objectId });
       const processedPage = await this.processPage(page);
-      
+
       if (!processedPage) {
         throw new Error('Failed to process main page');
       }
 
-      // Fetch all child pages recursively
-      const childPages = await this.fetchChildPages(this.objectId);
-      
-      // Combine main page with child pages
-      const allPages = [processedPage, ...childPages];
-      
-      logger.info(`Fetched 1 main page and ${childPages.length} child pages`);
-      return allPages;
+      logger.info(`Fetched page "${processedPage.title}" with nested content`);
+      return [processedPage];
     } catch (error) {
-      logger.error('Error fetching single page:', error);
+      logger.error('Error fetching page:', error);
       throw error;
     }
-  }
-
-  private async fetchChildPages(parentPageId: string, depth: number = 0): Promise<ProcessedPage[]> {
-    if (depth > 10) {
-      logger.warn('Maximum recursion depth reached, stopping child page fetch');
-      return [];
-    }
-
-    const childPages: ProcessedPage[] = [];
-    
-    try {
-      const response = await this.client.blocks.children.list({
-        block_id: parentPageId,
-      });
-
-      for (const block of response.results as any[]) {
-        if (block.type === 'child_page' && block.child_page) {
-          try {
-            // Fetch the child page details
-            const childPage = await this.client.pages.retrieve({ page_id: block.id });
-            const processedChild = await this.processPage(childPage);
-            
-            if (processedChild) {
-              // Recursively fetch children of this child page
-              const grandChildren = await this.fetchChildPages(block.id, depth + 1);
-              childPages.push(processedChild, ...grandChildren);
-            }
-          } catch (error) {
-            logger.warn(`Failed to fetch child page ${block.id}:`, error);
-          }
-        }
-      }
-    } catch (error) {
-      logger.warn(`Failed to fetch children for page ${parentPageId}:`, error);
-    }
-
-    return childPages;
   }
 
   private async fetchDatabasePages(
